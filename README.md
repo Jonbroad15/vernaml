@@ -2,6 +2,7 @@
 Repository for my comp402 project
 
 **Supervisor:** Jerome Waldispuhl
+
 **Coordinator:** Yue Li
 
 # Project Goals
