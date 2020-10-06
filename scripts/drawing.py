@@ -15,7 +15,7 @@ script_dir = os.path.dirname(os.path.realpath(__file__))
 if __name__ == "__main__":
     sys.path.append(os.path.join(script_dir, ".."))
 
-from rna_layout import circular_layout
+from tools.rna_layout import circular_layout
 
 params = {'text.latex.preamble': [r'\usepackage{fdsymbol}\usepackage{xspace}']}
 plt.rc('font', family='serif')
