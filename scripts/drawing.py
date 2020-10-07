@@ -1,5 +1,7 @@
 import os, sys
 import pickle
+import argparse
+
 
 import networkx as nx
 import numpy as np
@@ -12,12 +14,10 @@ import seaborn as sns
 
 script_dir = os.path.dirname(os.path.realpath(__file__))
 
-if __name__ == "__main__":
-    sys.path.append(os.path.join(script_dir, ".."))
 
 from tools.rna_layout import circular_layout
 
-params = {'text.latex.preamble': [r'\usepackage{fdsymbol}\usepackage{xspace}']}
+params = {'text.latex.preamble': r'\usepackage{fdsymbol}\usepackage{xspace}'}
 plt.rc('font', family='serif')
 plt.rcParams.update(params)
 
@@ -41,7 +41,7 @@ def process_axis(axis,
                  node_color=None,
                  node_labels=None,
                  node_ids=False):
-    pos = circular_layout(g)
+    pos = nx.spring_layout(g)
 
     if not node_color is None:
         nodes = nx.draw_networkx_nodes(g, pos, node_size=150, node_color=node_color, linewidths=2, ax=axis)
@@ -264,7 +264,7 @@ def rna_draw_grid(graphs, subtitles=None, highlight_edges=None, node_colors=None
 def generic_draw_pair(graphs, title="", highlight_edges=None, node_colors=None, num_clusters=None):
     fig, ax = plt.subplots(1, len(graphs), num=1)
     for i, g in enumerate(graphs):
-        pos = nx.spring_layout(g)
+        pos = circular_layout(g)
 
         if not node_colors is None:
             nodes = nx.draw_networkx_nodes(g, pos, node_size=150, node_color=node_colors[i], linewidths=2, ax=ax[i])
@@ -431,5 +431,7 @@ def graph_align(g1, g2, ops, title="", save=None, rna=False):
     pass
 
 
+
 if __name__ == "__main__":
-    pass
+    sys.path.append(os.path.join(script_dir, ".."))
+    main()
