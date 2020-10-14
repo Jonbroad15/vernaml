@@ -13,7 +13,21 @@ from Bio.PDB import *
 scriptdir = os.path.dirname(__file__)
 
 
-def get_interfaces(cif_path, cutoff=10):
+def is_dna(res):
+    """
+    returns true if the input residue is a DNA molecule
+    """
+    if res.id[0] != ' ':
+        return False
+    if is_aa(res):
+        return False
+    if 'D' in res.get_resname():
+        return True
+    else:
+        return False
+
+
+def get_interfaces(cif_path, ligands, cutoff=10, skipWater=True):
     """Obtain only RNA interfacing residues within a single structure of polymers. Uses
    KDTree data structure for vector search, by the biopython NeighborSearch module.
 
@@ -22,9 +36,7 @@ def get_interfaces(cif_path, cutoff=10):
         `cutoff (float, int)`: Number of Angstroms to use as cutoff distance
         for interface calculation.
     Returns:
-        `rna_interface_residues`: List of tuples of the pbid, position, chain of RNA-RNA interface residues
-        `protein_interface_residues`: List of tuples of the pbid, position, chain of RNA-protein interface residues
-        `other_interface_residues`: List of tuples of the pbid, position, chain, interacting molecule of RNA-other interface residues. (small molecules and DNA)
+        `interface_residues`: List of tuples of the pbid, position, chain of RNA-RNA, interaction type
         `Structure`: BioPython Structure object
     """
     parser = MMCIFParser(QUIET=True)
@@ -41,88 +53,101 @@ def get_interfaces(cif_path, cutoff=10):
     #3-D KD tree
     atom_list = Selection.unfold_entities(structure, 'A')
     neighbors = NeighborSearch(atom_list)
-    rna_bases = ['A', 'U', 'C', 'G']
     close_residues = neighbors.search_all(cutoff, level='R')
-    rna_interface_residues = []
-    protein_interface_residues = []
-    other_interface_residues = []
+    interface_residues = []
     for r in close_residues:
         res_1 = r[0]
         res_2 = r[1]
 
-        # skip residues pairs that do not contain rna
-        if res_1.get_resname() not in rna_bases and res_2.get_resname() not in rna_bases:
+       # skip interactions with water
+        if skipWater:
+            if res_1.id[0] == 'W' or res_2.id[0] == 'W': continue
+
+        # skip protein-protein pairs
+        if is_aa(res_1) and is_aa(res_2):
             continue
+
+        # skip interactions with DNA
+        if is_dna(res_1) or is_dna(res_2):
+            continue
+
         #if interaction between different chains add to list
         if res_1.get_parent() != res_2.get_parent():
+
+            # get chain names and res names
             c1 = res_1.get_parent().id.strip()
             c2 = res_2.get_parent().id.strip()
+            r1 = res_1.get_resname().strip()
+            r2 = res_2.get_resname().strip()
 
-            # interaction type and append to corresponding dataset
+
+            # Determine interaction type and append to corresponding dataset
             # RNA-Protein 
             if is_aa(res_1):
-                protein_interface_residues.append((structure_id, res_2.id[1], c2))
+                interface_residues.append((structure_id, res_2.id[1], c2, 'protein'))
             elif is_aa(res_2):
-                protein_interface_residues.append((structure_id, res_1.id[1], c1))
-            # RNA-RNA
-            elif res_1.get_resname() in rna_bases and res_2.get_resname() in rna_bases:
-                rna_interface_residues.append((structure_id, res_1.id[1], c1))
-                rna_interface_residues.append((structure_id, res_2.id[1], c2))
-            # RNA-other
-            elif res_1.get_resname() in rna_bases:
-                other_interface_residues.append((structure_id, res_1.id[1], c1, res_1.id[0]))
-            elif res_2.get_resname() in rna_bases:
-                other_interface_residues.append((structure_id, res_2.id[1], c2, res_1.id[0]))
+                interface_residues.append((structure_id, res_1.id[1], c1, 'protein'))
+            # RNA-RNA or RNA-DNA
+            elif res_1.id[0] == ' ' and res_2.id[0] == ' ':
+                interface_residues.append((structure_id, res_1.id[1], c1, 'rna'))
+                interface_residues.append((structure_id, res_2.id[1], c2, 'rna'))
+            # RNA-smallMolecule
+            elif  r1 in ligands:
+                interface_residues.append((structure_id, res_1.id[1], c1, 'ligand'))
+            elif  r2 in ligands:
+                interface_residues.append((structure_id, res_2.id[1], c2, 'ligand'))
+            # RNA-Ion
+            elif 'H' in res_1.id[0] and ' ' in res_2.id[0]:
+                interface_residues.append((structure_id, res_2.id[1], c2, 'ion'))
+            elif 'H' in res_2.id[0] and ' ' in res_1.id[0]:
+                interface_residues.append((structure_id, res_1.id[1], c2, 'ion'))
+            elif  'H' in res_2.id[0] and 'H' in res_1.id[0]:
+                continue
+            else:
+                print('warning unmatched residue pair \t res_1.id:', res_1.id, 'res_2.id:', res_2.id)
+
+    # remove duplicates and sort by seqid
+    interface_residues = list(set(interface_residues))
+    interface_residues_sorted = sorted(interface_residues, key=lambda tup: tup[2])
+    interface_residues_sorted = sorted(interface_residues, key=lambda tup: tup[1])
+
+    return interface_residues_sorted, structure
 
 
-    return list(set(rna_interface_residues)), list(set(protein_interface_residues)), list(set(other_interface_residues)), structure
 
-if __name__ == "__main__":
-
+def main()
     # Parse args
     parser = argparse.ArgumentParser()
     parser.add_argument('-i', help='Input directory of CIF files', default='../data/rna_structure_representative_set/')
-    parser.add_argument('-o', help='Output directory', default='../data/')
-    parser.add_argument( '-cutoff', help='Cutoff (in angstroms) of the distance between interacting residues', default=10)
+    parser.add_argument('-o', help='Output file')
+    parser.add_argument( '--cutoff', help='Cutoff (in angstroms) of the distance between interacting residues', default=10)
+    parser.add_argument('--ligands', help='list of ligands', default='../data/ligand_list.txt')
     args = parser.parse_args()
-    output_dir = os.path.join(scriptdir, args.o)
+
+    # Get ligands list
+    ligands = []
+    with open(args.ligands, 'r') as f:
+        for line in f.readlines():
+            ligands.append(line.strip())
 
     # initialize empty residue lists
-    rna_interface_residues = []
-    protein_interface_residues = []
-    other_interface_residues = []
+    interface_residues = []
 
     # find interfaces
     for cif_file in os.listdir(args.i):
-        rna, protein, others, _ = get_interfaces(f"../data/rna_structure_representative_set/{cif_file}", cutoff = int(args.cutoff))
-        rna_interface_residues = rna_interface_residues + rna
-        protein_interface_residues = protein_interface_residues + protein
-        other_interface_residues = other_interface_residues + others
+        residues, _ = get_interfaces(f"../data/rna_structure_representative_set/{cif_file}", ligands = ligands, cutoff = int(args.cutoff))
+        interface_residues = interface_residues + residues
 
-    # Output files
-    protein_out = os.path.join(output_dir, 'RNAProtein_interactions.csv')
-    rna_out =  os.path.join(output_dir, 'RNARNA_interactions.csv')
-    other_out =  os.path.join(output_dir, 'otherRNA_interactions.csv')
-
-    with open(rna_out, 'w') as f:
+    with open(args.o, 'w') as f:
         # Header:
-        f.write('pbid,postion,chain\n')
+        f.write('pbid,position,chain,type\n')
         # Data
-        for line in rna_interface_residues:
-            f.write(f'{line[0]},{line[1]},{line[2]}\n')
-    with open(protein_out, 'w') as f:
-        # Header:
-        f.write('pbid,postion,chain\n')
-        # Data
-        for line in protein_interface_residues:
-            f.write(f'{line[0]},{line[1]},{line[2]}\n')
-    with open(other_out, 'w') as f:
-        # Header:
-        f.write('pbid,postion,chain,binding_molecule\n')
-        # Data
-        for line in other_interface_residues:
+        for line in interface_residues:
             f.write(f'{line[0]},{line[1]},{line[2]},{line[3]}\n')
 
+
+if __name__ == "__main__":
+    main()
 
 
 
