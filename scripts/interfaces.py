@@ -10,7 +10,7 @@ import numpy as np
 from Bio.PDB import *
 
 
-scriptdir = os.path.dirname(__file__)
+scriptdir = os.path.dirname(os.path.realpath(__file__))
 
 
 def is_dna(res):
@@ -28,7 +28,7 @@ def is_dna(res):
 
 
 def get_interfaces(cif_path, ligands, cutoff=10, skipWater=True):
-    """Obtain only RNA interfacing residues within a single structure of polymers. Uses
+    """Obtain RNA interface residues within a single structure of polymers. Uses
    KDTree data structure for vector search, by the biopython NeighborSearch module.
 
     Args:
@@ -45,9 +45,8 @@ def get_interfaces(cif_path, ligands, cutoff=10, skipWater=True):
     try:
         structure = parser.get_structure('X', cif_path)
     except FileNotFoundError:
-        print(f'Error file {cif_path} not found')
+        print(f'ERROR: file {cif_path} not found')
         return None
-        # structure = load_structure(pdb_path)
 
     print(f'Finding RNA interfaces for structure: {structure_id}')
     #3-D KD tree
@@ -115,36 +114,58 @@ def get_interfaces(cif_path, ligands, cutoff=10, skipWater=True):
 
 
 
-def main()
+def main():
     # Parse args
     parser = argparse.ArgumentParser()
-    parser.add_argument('-i', help='Input directory of CIF files', default='../data/rna_structure_representative_set/')
-    parser.add_argument('-o', help='Output file')
-    parser.add_argument( '--cutoff', help='Cutoff (in angstroms) of the distance between interacting residues', default=10)
-    parser.add_argument('--ligands', help='list of ligands', default='../data/ligand_list.txt')
+    parser.add_argument('-i', '--input',
+                        help='Input directory of CIF files for RNA structures',
+                        default= os.path.join(scriptdir,'..','data','rna_representative_set/'))
+    parser.add_argument('-o', '--output',
+                        help='Output csv file of interacting residue list',
+                        default = os.path.join(scriptdir, '..', 'data',
+                            'interface_residue list.csv'))
+    parser.add_argument( '-c', '--cutoff',
+                        help='Cutoff (in angstroms) of the distance \
+                                between interacting residues',
+                                default=10)
+    parser.add_argument('-l', '--ligands',
+                        help='list of ligands',
+                        default= os.path.join(scriptdir, '..', 'data', 'ligand_list.txt'))
     args = parser.parse_args()
+    input_dir = args.input
+    output_file = args.output
+    cutoff = int(args.cutoff)
+    ligands_file = args.ligands
 
     # Get ligands list
     ligands = []
-    with open(args.ligands, 'r') as f:
+    with open(ligands_file, 'r') as f:
         for line in f.readlines():
             ligands.append(line.strip())
 
     # initialize empty residue lists
     interface_residues = []
+    files_not_found = []
 
     # find interfaces
-    for cif_file in os.listdir(args.i):
-        residues, _ = get_interfaces(f"../data/rna_structure_representative_set/{cif_file}", ligands = ligands, cutoff = int(args.cutoff))
+    for cif_file in os.listdir(input_dir):
+        path = os.path.join(input_dir, cif_file)
+        try:
+            residues, _ = get_interfaces(path, ligands = ligands, cutoff = cutoff)
+        except TypeError:
+            files_not_found.append(path)
         interface_residues = interface_residues + residues
 
-    with open(args.o, 'w') as f:
+    with open(output_file, 'w') as f:
         # Header:
         f.write('pbid,position,chain,type\n')
         # Data
         for line in interface_residues:
             f.write(f'{line[0]},{line[1]},{line[2]},{line[3]}\n')
 
+    print("DONE", '\n\n', 'NOTE: \t The following files were not found:\n')
+    for line in files_not_found:
+        print(line)
 
 if __name__ == "__main__":
     main()
