@@ -2,12 +2,24 @@ import unittest
 from Bio.PDB import *
 from ..interfaces import *
 
+scriptdir = os.path.dirname(os.path.realpath(__file__))
+rnadir = os.path.join(scriptdir, '..', '..', '..',
+                        'data', 'rna_representative_set')
+
+ligands_file = os.path.join(scriptdir, '..', '..', '..',
+                                'data', 'ligand_list.txt')
+ligands = []
+with open(ligands_file, 'r') as f:
+    for line in f.readlines():
+        ligands.append(line.strip())
+
 class InterfacesTestCase(unittest.TestCase):
+
 
     def test_interface_none(self):
 
-        path ='../data/rna_structure_representative_set/1av6.cif'
-        rna,_,_,_ = get_interfaces(path)
+        path = os.path.join(rnadir, '1av6.cif')
+        rna,_ = get_interfaces(path, ligands)
 
         self.assertEqual(len(rna), 0)
 
