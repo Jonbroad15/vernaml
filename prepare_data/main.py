@@ -3,24 +3,28 @@ Module for detecting RNA-protein, RNA-RNA and RNA-smallMolecule interface residu
 Interface residues decided on Euclidean distance cutoff.
 """
 
+import sys
 import argparse
 import os
 import numpy as np
 from Bio.PDB import *
-from comp402.interfaces import *
+
 
 scriptdir = os.path.dirname(os.path.realpath(__file__))
+sys.path.append(os.path.join(scriptdir, '..'))
+
+from prepare_data.interfaces import *
 
 def main():
     # Parse args
     parser = argparse.ArgumentParser()
     parser.add_argument('-i', '--input',
                         help='Input directory of CIF files for RNA structures',
-                        default= os.path.join(scriptdir,'..','data','rna_representative_set/'))
+                        default= os.path.join(scriptdir,'..','data','structures'))
     parser.add_argument('-o', '--output',
                         help='Output csv file of interacting residue list',
                         default = os.path.join(scriptdir, '..', 'data',
-                            'interface_residue list.csv'))
+                            'interface_residue_list.csv'))
     parser.add_argument( '-c', '--cutoff',
                         help='Cutoff (in angstroms) of the distance \
                                 between interacting residues',
@@ -52,6 +56,7 @@ def main():
         except TypeError:
             files_not_found.append(path)
         interface_residues = interface_residues + residues
+        break
 
     with open(output_file, 'w') as f:
         # Header:
@@ -60,9 +65,12 @@ def main():
         for line in interface_residues:
             f.write(f'{line[0]},{line[1]},{line[2]},{line[3]}\n')
 
-    print("DONE", '\n\n', 'NOTE: \t The following files were not found:\n')
-    for line in files_not_found:
-        print(line)
+    print("DONE")
+
+    if len(files_not_found) > 0:
+        print('\n\n', 'NOTE: \t The following files were not found:\n')
+        for line in files_not_found:
+            print(line)
 
 if __name__ == "__main__":
     main()

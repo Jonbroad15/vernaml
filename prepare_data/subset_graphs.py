@@ -3,7 +3,7 @@ import argparse
 import os
 import pandas as pd
 import csv
-from comp402.subset_graphs import slice_graph
+from prepare_data.subset_utils import slice_graph
 
 def main():
     parser = argparse.ArgumentParser()
