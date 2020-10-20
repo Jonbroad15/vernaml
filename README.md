@@ -12,3 +12,7 @@ The overall goal of this project will be to combine, tune and expand upon these 
 [VeRNAl](https://github.com/cgoliver/vernal)
 
 [RNAMigos](https://github.com/cgoliver/RNAmigos)
+
+# 1. Data Preparation
+## List of RNA representative sets
+Can be downloaded from [here](http://rna.bgsu.edu/rna3dhub/nrlist/release/3.145)
