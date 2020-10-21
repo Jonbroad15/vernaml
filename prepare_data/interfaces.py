@@ -1,9 +1,60 @@
 import os
 import numpy as np
 from Bio.PDB import *
+from Bio.PDB.MMCIF2Dict import MMCIF2Dict
 
 
 scriptdir = os.path.dirname(os.path.realpath(__file__))
+
+def find_ligand_annotations(cif_path, ligands):
+    """
+    Returns a list of ligand annotations in from a PDB structures cif file 
+    if they exist
+    :Param cif_path: path to PDB structure in mmCIF format
+    :Param ligans: list of ligands
+    :return known_interfaces: list of tuples of known interfaces
+                                [(pbid, position, chain, type), ...]
+    """
+    known_interfaces=[]
+    mmcif_dict = MMCIF2Dict(cif_path)
+    structure_id = cif_path[-8:-4]
+    ligands = set(ligands)
+
+    try:
+        binding_site_details = mmcif_dict['_struct_site.details']
+        binding_site_ids = mmcif_dict['_struct_site.id']
+    except KeyError:
+        print('No interface annotations found for:\n', cif_path, '\n\n')
+        return None
+
+    # Find binding site ID of first ligand if it exists
+    site_id = ''
+    for site, detail in zip(binding_site_ids, binding_site_details):
+        words = detail.split()
+        for w in words:
+            if w in ligands and len(w) > 1:
+                site_id = site
+
+    if site_id == '':
+        print('No ligand annotations found for: \n', cif_path, '\n\n')
+        return None
+
+    print(site_id)
+
+    # Find the residues of the binding site
+    positions = mmcif_dict['_struct_site_gen.label_seq_id']
+    chains = mmcif_dict['_struct_site_gen.label_asym_id']
+    res_ids = mmcif_dict['_struct_site_gen.label_comp_id']
+    sites = mmcif_dict['_struct_site_gen.site_id']
+
+    for position, chain, res_id, site in zip(positions, chains, res_ids, sites):
+        if site != site_id: continue
+        if len(res_id) > 1 and res_id not in 'AUCG': continue
+        known_interfaces.append((structure_id, position, chain, 'ligand'))
+
+    if len(known_interfaces) == 0: return None
+
+    return known_interfaces
 
 
 def is_dna(res):
