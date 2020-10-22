@@ -1,4 +1,4 @@
-# Comp402
+# veRNAml
 Repository for my comp402 project
 
 **Supervisor:** Jerome Waldispuhl
