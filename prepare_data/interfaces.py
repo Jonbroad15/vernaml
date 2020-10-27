@@ -133,9 +133,9 @@ def get_interfaces(cif_path, ligands, cutoff=10, skipWater=True):
             interface_residues.append((structure_id, res_2.id[1], c2, 'rna'))
         # RNA-smallMolecule
         elif  r1 in ligands:
-            interface_residues.append((structure_id, res_1.id[1], c1, 'ligand'))
+            interface_residues.append((structure_id, res_2.id[1], c1, 'ligand'))
         elif  r2 in ligands:
-            interface_residues.append((structure_id, res_2.id[1], c2, 'ligand'))
+            interface_residues.append((structure_id, res_1.id[1], c2, 'ligand'))
         # RNA-Ion
         elif 'H' in res_1.id[0] and ' ' in res_2.id[0]:
             interface_residues.append((structure_id, res_2.id[1], c2, 'ion'))
