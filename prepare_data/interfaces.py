@@ -8,7 +8,7 @@ scriptdir = os.path.dirname(os.path.realpath(__file__))
 
 def find_ligand_annotations(cif_path, ligands):
     """
-    Returns a list of ligand annotations in from a PDB structures cif file 
+    Returns a list of ligand annotations in from a PDB structures cif file
     if they exist
     :Param cif_path: path to PDB structure in mmCIF format
     :Param ligans: list of ligands
@@ -70,6 +70,12 @@ def is_dna(res):
     else:
         return False
 
+def get_offset_pos(res):
+        pos = list(res.get_parent().get_residues())[0].id[1]
+        if pos != 0:
+            return res.id[1] - pos + 1
+        else:
+            return res.id[1] + 1
 
 def get_interfaces(cif_path, ligands, cutoff=10, skipWater=True):
     """Obtain RNA interface residues within a single structure of polymers. Uses
@@ -115,6 +121,12 @@ def get_interfaces(cif_path, ligands, cutoff=10, skipWater=True):
         # skip interaction between different the same chain
         if res_1.get_parent() == res_2.get_parent(): continue
 
+        # get position offset
+        r1_position = get_offset_pos(res_1)
+        r2_position = get_offset_pos(res_2)
+        r1_pbid_position = res_1.id[1]
+        r2_pbid_position = res_2.id[1]
+
         # get chain names and res names
         c1 = res_1.get_parent().id.strip()
         c2 = res_2.get_parent().id.strip()
@@ -124,23 +136,31 @@ def get_interfaces(cif_path, ligands, cutoff=10, skipWater=True):
         # Determine interaction type and append to corresponding dataset
         # RNA-Protein 
         if is_aa(res_1):
-            interface_residues.append((structure_id, res_2.id[1], c2, 'protein'))
+            interface_residues.append((structure_id, r2_position, c2, 'protein',
+                                        'True', r2_pbid_position))
         elif is_aa(res_2):
-            interface_residues.append((structure_id, res_1.id[1], c1, 'protein'))
+            interface_residues.append((structure_id, r1_position, c1, 'protein',
+                                        'True', r1_pbid_position))
         # RNA-RNA 
         elif res_1.id[0] == ' ' and res_2.id[0] == ' ':
-            interface_residues.append((structure_id, res_1.id[1], c1, 'rna'))
-            interface_residues.append((structure_id, res_2.id[1], c2, 'rna'))
+            interface_residues.append((structure_id, r1_position, c1, 'rna',
+                                        'True', r1_pbid_position))
+            interface_residues.append((structure_id, r2_position, c2, 'rna',
+                                        'True', r2_pbid_position))
         # RNA-smallMolecule
         elif  r1 in ligands and 'H' in res_1.id[0] and ' ' in res_2.id[0]:
-            interface_residues.append((structure_id, res_2.id[1], c2, 'ligand'))
+            interface_residues.append((structure_id, r2_position, c2, 'ligand',
+                                        r1, r2_pbid_position))
         elif  r2 in ligands and 'H' in res_2.id[0] and ' ' in res_1.id[0]:
-            interface_residues.append((structure_id, res_1.id[1], c1, 'ligand'))
+            interface_residues.append((structure_id, r1_position, c1, 'ligand',
+                                        r2, r1_pbid_position))
         # RNA-Ion
         elif 'H' in res_1.id[0] and ' ' in res_2.id[0]:
-            interface_residues.append((structure_id, res_2.id[1], c2, 'ion'))
+            interface_residues.append((structure_id, r2_position, c2, 'ion',
+                                        r1, r2_pbid_position))
         elif 'H' in res_2.id[0] and ' ' in res_1.id[0]:
-            interface_residues.append((structure_id, res_1.id[1], c2, 'ion'))
+            interface_residues.append((structure_id, r1_position, c2, 'ion',
+                                        r2, r1_pbid_position))
         elif  'H' in res_2.id[0] and 'H' in res_1.id[0]:
             continue
         else:

@@ -8,7 +8,7 @@ import argparse
 import os
 import numpy as np
 from Bio.PDB import *
-
+import json
 
 scriptdir = os.path.dirname(os.path.realpath(__file__))
 sys.path.append(os.path.join(scriptdir, '..'))
@@ -28,18 +28,18 @@ def write_interfaces(output_file, interface_residues):
     """
     with open(output_file, 'w') as f:
         # Header:
-        f.write('pbid,position,chain,type\n')
+        f.write('pbid,chain_pos,chain,type,binding_molecule,PDB_pos\n')
         # Data
         for line in interface_residues:
-            f.write(f'{line[0]},{line[1]},{line[2]},{line[3]}\n')
+            f.write(f'{line[0]},{line[1]},{line[2]},{line[3]},{line[4]},{line[5]}\n')
 
 def main():
     # Parse args
     parser = argparse.ArgumentParser()
-    parser.add_argument('-i', '--input',
-                        help='Input directory of CIF files for RNA structures',
+    parser.add_argument('-S', '--pbd_dir',
+                        help='Input directory of PBD structures (format=mmCIF)',
                         default= os.path.join(scriptdir,'..','data','structures'))
-    parser.add_argument('-R', '--residues_output',
+    parser.add_argument('-interface_list_output',
                         help='Output CSV file of interface residue list',
                         default = os.path.join(scriptdir, '..', 'data',
                             'interface_residue_list.csv'))
@@ -50,14 +50,14 @@ def main():
     parser.add_argument('-l', '--ligands',
                         help='list of ligands',
                         default= os.path.join(scriptdir, '..', 'data', 'ligand_list.txt'))
-    parser.add_argument('-g', '--graphsdir',
+    parser.add_argument('-native_graphs_dir',
                         help='directory containing native RNA graphs',
                         default = os.path.join(scriptdir, '..', 'data', 'graphs', 'native'))
-    parser.add_argument('-r', '--residues_input',
+    parser.add_argument('-interface_list_input',
                         help='CSV file of list of interface residues\
                                 call with this option if prepare_data/main has\
                                 been called before to speed up execution')
-    parser.add_argument('output_dir',
+    parser.add_argument('interface_graphs_dir',
                         help='output directory to store interface graphs')
     parser.add_argument('-t','--type',
                         help='RNA interface interaction partner\
@@ -67,19 +67,14 @@ def main():
     args = parser.parse_args()
 
     args = parser.parse_args()
-    input_dir = args.input
-    residues_list_output = args.residues_output
-    output_dir = args.output_dir
     interaction_type = args.type.split(' ')
-    graphs_dir = args.graphsdir
-    subset_file = args.residues_input
     cutoff = int(args.cutoff)
-    ligands_file = args.ligands
+    files_not_found=[]
 
-    if subset_file == None:
+    if args.interface_list_input == None:
         # Get ligands list
         ligands = []
-        with open(ligands_file, 'r') as f:
+        with open(args.ligands, 'r') as f:
             for line in f.readlines():
                 ligands.append(line.strip())
 
@@ -88,8 +83,12 @@ def main():
         files_not_found = []
 
         # find interfaces
-        for cif_file in os.listdir(input_dir):
-            path = os.path.join(input_dir, cif_file)
+        i = 0
+        for cif_file in os.listdir(args.pbd_dir):
+            # DEBUGGING: Loop control
+            # if i == 30: break
+            # i+=1
+            path = os.path.join(args.pbd_dir, cif_file)
             try:
                 residues, _ = get_interfaces(path, ligands = ligands, cutoff = cutoff)
             except TypeError:
@@ -97,14 +96,20 @@ def main():
             interface_residues = interface_residues + residues
 
         # Write interfaces to csv and parse csv
-        write_interfaces(residues_list_output, interface_residues)
-        subset = parse_subset(interface_residues, interaction_type)
+        write_interfaces(args.interface_list_output, interface_residues)
+        interface_list_input = args.interface_list_output
 
     else:
-        subset = parse_subset_fromcsv(subset_file, interaction_type)
+        interface_list_input = args.interface_list_input
 
-    # TODO: slice graphs from interface residues list 
-    slice_all(graphs_dir, output_dir, subset)
+    # Parse interfaces into dictionaries
+    subset = parse_subset_fromcsv(interface_list_input, interaction_type)
+
+    # with open(os.path.join(scriptdir, '..', 'junk', 'subset.json'), 'w') as f:
+        # json.dump(subset, f, indent=4)
+
+    # slice graphs from interface residues list 
+    slice_all(args.native_graphs_dir, args.interface_graphs_dir, subset)
 
     print("DONE")
 
