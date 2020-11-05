@@ -10,6 +10,9 @@ sys.path.append(os.path.join(script_dir, '..'))
 
 from tools.graph_utils import bfs_expand, dangle_trim
 
+class CustomError(Exception):
+    pass
+
 def get_largest_graph(graphs):
 
     largest = graphs[0]
@@ -22,6 +25,13 @@ def get_largest_graph(graphs):
 def get_pbid(g):
 
     return list(g.nodes)[0][0]
+
+def print_node_data(g):
+
+    print('graph: ', get_pbid(g))
+    print('g.nodes:')
+    for node in g.nodes:
+        print(node, g.nodes[node])
 
 def get_num_nodes(g):
 
@@ -104,6 +114,10 @@ def connect_components(g, g_native, depth=2, trim_dangles=True):
         if len(list(h.nodes)) != 0:
             graphs.append(h)
 
+    if graphs == []:
+        raise CustomError
+
+
     return graphs
 
 def balance_complement(interface, complement):
@@ -176,33 +190,34 @@ def add_labels(g, labels=None):
 def slice_graph(g, subset_info, quiet=False):
     """
     :param g:       graph
-    :param subset:  set of nodes
+    :param subset_info:  list of 3-tuples containing info on the nodes to subset
+                        format = [(pbid.nx, chain, pdb_pos), ...]
 
     :return g_subgraph: subgraph of nodes in subset
     :return g_prime:    complement of subgraph
     """
     g_prime = g.copy()
 
-    # Debugging
-    # if get_pbid(g) == '1g1x.nx':
-        # print(subset)
-        # print(g.nodes)
-        # raise Exception
+    if len(subset_info) == 0:
+        print('ERROR: subset_info is empty for', get_pbid(g))
+        raise CustomError
+
     subset = []
     for node in g.nodes:
         for _, chain, pdb_pos in subset_info:
             if int(g.nodes[node]['pdb_pos']) == pdb_pos and g.nodes[node]['chain'] == chain:
                 subset.append(node)
 
-
     if len(subset) > 0:
         g_subgraph = g_prime.subgraph(subset).copy()
         g_prime.remove_nodes_from([n for n in g_prime if n in set(subset)])
     else:
         if not quiet:
-            print('ERROR subset is empty for graph', get_pbid(g))
-            print('subset:', subset, '\n')
+            print('ERROR subset does not overlap with nodes in the graph', get_pbid(g))
+            print_node_data(g)
+            print('\nsubset_info:', subset_info, '\n')
         g_subgraph = None
+        raise CustomError
 
     if get_num_nodes(g_subgraph) == 0:
         if not quiet:
@@ -212,14 +227,28 @@ def slice_graph(g, subset_info, quiet=False):
 
     return g_subgraph, g_prime
 
-def slice_all(input_dir, output_dir, subset):
+def slice_all(native_dir, output_dir, subset, quiet=False):
     """
-    Slice all graphs in input_dir and writes them in the output_dir
+    Slice all graphs in native_dir and writes them in the output_dir
+    Connects all the sliced graphs organized them into distinct connected components
+    (one connected graph for file, for graphs with more than one connected component
+    more than one file is outputted)
+    Complement Graphs are balanced to the same size as interface graphs
+    (only if they are larger)
 
-    :param input_dir:
-    :param output_dir:
-    :param subset: dictionary of pbid : [list of interfaces nodes]
-
+    :param native_dir: directory containing native PDB graphs
+    :param output_dir: output directory for new interface and complement graphs
+    :param subset: dictionary -> list -> dictionary -> dictionary
+                i.e.
+                subset[xxxx.nx] = {(xxxx.nx, A, 0) :
+                                        {
+                                            'rna': True,
+                                            'protein': None,
+                                            'ligand': None,
+                                            'ion': None
+                                        }
+                                }
+    (See parse_subset_fromcsv for more info)
     :return:
     """
     try:
@@ -228,40 +257,54 @@ def slice_all(input_dir, output_dir, subset):
         print('complement directory already exists! make sure you are not overwriting')
     comp_dir = os.path.join(output_dir, 'complement')
 
-    for graph_file in os.listdir(input_dir):
+    failed_slices = []
+
+    for graph_file in os.listdir(native_dir):
         # print(f'Slicing RNA graph: \t {graph_file}')
-        g = nx.read_gpickle(os.path.join(input_dir, graph_file))
+        g = nx.read_gpickle(os.path.join(native_dir, graph_file))
         g_native = g.copy()
         pbid = list(g.nodes)[0][0]
 
         # Slice graph it has an interface in the subset
         if pbid in subset.keys():
             sub = subset[pbid].keys()
-            g_subgraph, g_complement = slice_graph(g, sub)
-            # print(list(g_subgraph.nodes))
+            try:
+                g_subgraph, g_complement = slice_graph(g, sub)
+            except CustomError:
+                failed_slices.append((g, sub))
+                continue
 
             if len(list(g_complement.nodes)) == 0:
                 g_complement = None
 
             # Connect the components into a set of graphs
-            interface_graphs = connect_components(g_subgraph, g_native)
-
+            try:
+                interface_graphs = connect_components(g_subgraph, g_native)
+            except CustomError:
             # skip if the interface is just dangles
-            if len(interface_graphs) == 0: continue
-            # print(interface_graphs)
+                if not quiet: print('Only dangles found for graph: ', get_pbid(g_subgraph))
+                continue
             if g_complement:
-                complement_graphs = connect_components(g_complement, g_native,
-                                                    trim_dangles=False)
-                num_comps = len(complement_graphs)
-                largest_complement = get_largest_graph(complement_graphs)
+                try:
+                    complement_graphs = connect_components(g_complement, g_native)
+                    num_comps = len(complement_graphs)
+                    largest_complement = get_largest_graph(complement_graphs)
+                except CustomError:
+                    if not quiet: print('Warning complement graph is only dangles',
+                                        'Complement removed',
+                                        get_pbid(g_complement))
+                    g_complement = None
 
             # Balance and write output
             pbid_name = graph_file[:4]
             for i, h in enumerate(interface_graphs):
+
                 # Balance complement
                 if g_complement:
                     balanced_comp, too_small = balance_complement(h, largest_complement)
                     add_labels(balanced_comp)
+
+                    # Add all complement graphs > 5 if complement is too small
                     if too_small:
                         j = 1
                         for comp in complement_graphs:
@@ -281,6 +324,32 @@ def slice_all(input_dir, output_dir, subset):
                 nx.write_gpickle(h, os.path.join(output_dir,
                                                 (pbid_name + '_' + str(i) + '.nx') ))
 
+    # Error Logging
+    if len(failed_slices) > 0:
+        with open(os.path.join(output_dir, 'log.txt'), 'w') as f:
+            if not quiet: print('some graph slicing failed, see log.txt for more details')
+            f.write('These graphs failed to slice because the subset nodes did not\n')
+            f.write('intersect the nodes in the graph\n')
+            f.write('The graph is likely missing elements from the pdb original\n')
+            f.write('i.e. dimer chains\n\n')
+            for graph, subset in failed_slices:
+                # print graphs that failed to slice
+                if not quiet: print(graph)
+                f.write('nodes in graph: ')
+                f.write(get_pbid(graph))
+                f.write('\n\n')
+                # write node data to log
+                for node in g.nodes:
+                    f.write(str(node))
+                    f.write('\t')
+                    f.write(str(g.nodes[node]))
+                    f.write('\n')
+                f.write('\n\n subset:')
+                for line in subset:
+                    f.write(str(line))
+                    f.write('\n')
+                f.write('\n\n')
+
 
 def parse_subset_fromcsv(subset_file, interaction_type):
     """
@@ -288,7 +357,8 @@ def parse_subset_fromcsv(subset_file, interaction_type):
     :param subset_file:
     :param interaction_type: list of strings of interaction type
                             options = {protein, rna, ligand, ion, all}
-    :return subset: dictionary of pbid : [list of nodes]
+    :return subset: dictionary of pbid.nx mapping to list of node data
+                    each with attribute labels
     """
     subset = {}
     print('Building interface subset dictionary...')
@@ -299,7 +369,7 @@ def parse_subset_fromcsv(subset_file, interaction_type):
             if header:
                 header = False
                 continue
-            # if curr_type not in interaction_type and 'all' not in interaction_type: continue
+            if curr_type not in interaction_type and 'all' not in interaction_type: continue
             pbid = pbid + '.nx'
             node = ( pbid, chain, int(position) )
             if pbid in subset.keys():
