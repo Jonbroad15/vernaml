@@ -14,10 +14,13 @@ The overall goal of this project will be to combine, tune and expand upon these 
 [RNAMigos](https://github.com/cgoliver/RNAmigos)
 
 # 1. Data Preparation
-The training data for VernaML consists of netowrkx graphs which are sliced into portions containing RNA interfaces and their respective complements.
-To generate this data, find interfaces on a representative set of RCSB PDB structures using the prepare\_data package.
+The training data for VernaML consists of netowrkx graphs which are sliced into portions containing RNA interfaces and their respective complement counterparts.
+To generate this data:
+1. Retrieve a representative set of RCSB PDB structures.
+2. Find all interfaces within structures.
+3. Slice native RNA graphs into interface and complement parts.
 
-This process can take some time loading all the PDB structures then subsequently slicing their graphs. Alternatively the pre-built following datasets can be downloaded from MEGA:
+The `prepare\_data` directory contains all the scripts to do these tasks. The process can take some time so alternatively the following pre-built datasets can be downloaded from MEGA:
 
 |	Dataset 	    |Graphs | Edges| Nodes  |Avg. Nodes | Avg. Edges|Links|
 |---------------------------|-------:|------:|--------:|-------:|-----------:|-------|
