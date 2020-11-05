@@ -22,7 +22,7 @@ def slice_structures(repr_set):
         # Parse structure
         # TODO: error handling and download structure if it does not exist
         # TODO: Can speed up by grouping repr_set by pbid
-        structure = parser.get_structure(pbid, os.path.join(args.output_dir, f'{pbid}.cif')
+        structure = parser.get_structure(pbid, os.path.join(args.output_dir, f'{pbid}.cif'))
 
         # split into each IFE (Integrated Functional Element)
         items = line.split('+')
