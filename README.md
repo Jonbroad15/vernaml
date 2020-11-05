@@ -20,7 +20,7 @@ To generate this data:
 2. Find all interfaces within structures.
 3. Slice native RNA graphs into interface and complement parts.
 
-The `prepare\_data` directory contains all the scripts to do these tasks. The process can take some time so alternatively the following pre-built datasets can be downloaded from MEGA:
+The `prepare_data` package contains all the scripts to do these tasks. The process can take some time so alternatively the following pre-built datasets can be downloaded from MEGA:
 
 |	Dataset 	    |Graphs | Edges| Nodes  |Avg. Nodes | Avg. Edges|Links|
 |---------------------------|-------:|------:|--------:|-------:|-----------:|-------|
@@ -35,18 +35,36 @@ The `prepare\_data` directory contains all the scripts to do these tasks. The pr
 |RNA-Ion                     |572    | 3490   | 3764   | 6.1  |6.6|[link](https://mega.nz/folder/BXxjwATS#AIjUWpiH0xURakayoC0elQ)|
 |RNA-Ion complement          |493    | 3691   | 3993   | 7.5  |8.1||
 
-## Download PDB Structures
+## 1.1 Retrieve a Representative Set of PDB Structures
 To avoid redundancies in the training data the BGSU representative set of RNAs are used.
 They can be downloaded from [here](http://rna.bgsu.edu/rna3dhub/nrlist/release/3.145) [1]
 
 Make a directory to store the structures
+
 `mkdir data/structures`
 
 Then run the following command to retrieve the PDB structures from the RCSB database
+
 `python prepare_data/retrieve_structures.py <BGSU file> data/structures`
 
-## 
+## 1.2 Find Interfaces in the PDB structures and Slice their RNA graphs
+Make a directory for the native graphs and the interface graphs
 
+`mkdir data/graphs`
+
+`mkdir data/graphs/interfaces`
+
+`mkdir data/graphs/native`
+
+Download the set of native RNA graphs from [here]() and extract the compressed files into the `native` directory.
+
+Now run `prepare_data/main.py` to find all the interfaces and slice the graphs. This process will take a few hours.
+
+`python prepare_data/main.py data/graphs/interfaces`
+
+#### Note
+- The an optional parameter `-t` can be added to specify the RNA interaction type. The default is all but can be any of `rna protein ion ligand`. Use a string in quotations seperated by spaces for multple interaction types.
+- Once the PDB interfaces are found, if you would like to run the script again use `-interface_list_input interface_residues_list.csv` option to use the interfaces computed from previous call and speed up execution.
 
 
 
