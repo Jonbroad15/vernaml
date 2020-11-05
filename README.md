@@ -21,7 +21,7 @@ This process can take some time loading all the PDB structures then subsequently
 
 |	Dataset 	    |Graphs | Edges| Nodes  |Avg. Nodes | Avg. Edges|Links|
 |---------------------------|-------:|------:|--------:|-------:|-----------:|-------|
-|ALL                         |2679   | 447225 | 641968  |166.9|239.6|[link]([link](https://mega.nz/folder/xCZxjIKQ#S2Yq8JVOTooCGQD7TJFrCw)|)|
+|ALL                         |2679   | 447225 | 641968  |166.9|239.6|[link](https://mega.nz/folder/xCZxjIKQ#S2Yq8JVOTooCGQD7TJFrCw)|
 |ALL complement              |9034   | 195395 | 228261 | 21.6 |25.3||
 |RNA-Protein                 |2750   | 411487 | 587961 | 149.6|213.8|[link](https://mega.nz/folder/NfwnVAha#oRwi7hV-QIaCYuvB3D7tqg)|
 |RNA-Protein complement      |8265   | 241611 | 322324 | 29.2 |39.0||
