@@ -15,7 +15,10 @@ The overall goal of this project will be to combine, tune and expand upon these 
 
 # 1. Data Preparation
 The training data for VernaML consists of netowrkx graphs which are sliced into portions containing RNA interfaces and their respective complement counterparts.
+
+
 ![RNA motif binding to CMC ligand](images/1et4.png)
+
 To generate this data:
 1. Retrieve a representative set of RCSB PDB structures.
 2. Find all interfaces within structures.
