@@ -14,7 +14,7 @@ The overall goal of this project will be to combine, tune and expand upon these 
 [RNAMigos](https://github.com/cgoliver/RNAmigos)
 
 # 1. Data Preparation
-The training data for VernaML consists of netowrkx graphs which are sliced into portions containing RNA interfaces and their respective complement counterparts.
+The training data for VernaML consists of netowrkx graphs which are sliced into portions containing RNA interfaces and their respective complement counterparts. Graphs are Augmented Base Pairing Networks. Here is an example of one overlayed on a PDB structure. Backbones are in white, canonical Watson-Crick bonds are in green and non-canonical bonds are in red.
 
 
 ![RNA motif binding to CMC ligand](images/1et4.png)
