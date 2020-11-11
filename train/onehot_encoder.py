@@ -2,21 +2,35 @@ import argparse
 import json
 import os
 import sys
+import pickle
+from collections import Counter, defaultdict
 
 script_dir = os.path.dirname(os.path.realpath(__file__))
 sys.path.append(os.path.join(script_dir, '..'))
 
-def write_onehot_data(graph_dir, output):
-    """
-    Write onehot_data.json. Contains labels for each graph
-    """
+from tools.meta_graph import MGraph, MGraphAll, MGraphNC
 
-    return
+def get_binary_labels(graph_dir):
+    """
+    For graphs in a directory with a complement subdirectory, get binary interface labels
+    """
+    labels = {}
+
+    # Interface graphs
+    for graph_file in os.listdir(graph_dir):
+        if '.nx' not in graph_file: continue
+        labels[graph_file] = 1
+
+    for graph_file in os.listdir(os.path.join(graph_dir, 'complement')):
+        if '.nx' not in graph_file: continue
+        labels[graph_file] = 0
+
+    return labels
 
 def build_onehot(meta_graph_path,
                  pdb_annotations,
                  maximal_only=True,
-                 task='rfam'
+                 task='ALL'
                  ):
     """
     Extract onehots for each PDB in the meta_graph
@@ -38,7 +52,8 @@ def build_onehot(meta_graph_path,
 
     maga_graph = pickle.load(open(meta_graph_path, 'rb'))
 
-    meta_nodes = sorted(maga_graph.nodes(data=True),
+    print('\nmaga_graph attributes: ', dir(maga_graph))
+    meta_nodes = sorted(maga_graph.maga_graph.nodes(data=True),
                         key=lambda x: len(x[0]),
                         reverse=True)
     motif_set = set()
@@ -46,10 +61,12 @@ def build_onehot(meta_graph_path,
     for motif, d in meta_nodes:
         # motif_id = "-".join(map(str, list(motif)))
         for i, instance in enumerate(d['node_set']):
+            print(instance)
             node = list(instance).pop()
             pdbid = node[0].split("_")[0]
 
             # skip if we don't have annotation for this pdb
+            # TODO: Change this to a node intersection 
             if pdbid not in pdb_annot_dict[task]:
                 print("Missing")
                 continue
@@ -65,6 +82,8 @@ def build_onehot(meta_graph_path,
             else:
                 pdb_to_motifs[pdbid].update([motif])
                 motif_set.add(motif)
+
+    return
 
     # get one hot
     hot_map = {motif: i for i, motif in enumerate(sorted(motif_set))}
@@ -92,14 +111,23 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('-G', '--graph_dir',
                         help='directory containing graphs to predict on')
-    parser.add_argument('-onehot-data-output',
+    parser.add_argument('-onehot_data_output',
                         help='JSON output for onehot data',
                         default=os.path.join(script_dir, '..', 'data', 'onehot_data.json'))
+    parser.add_argument('-m', '--metagraph',
+                        help = 'Metagraph of Motifs from vernal',
+                        default = os.path.join(script_dir, '..', 'data', 'general_fuzzy.p'))
     args = parser.parse_args()
 
-    write_onehot_data(args.graph_dir, args.onehot-data-output)
+    labels = {}
+    for directory in os.listdir(args.graph_dir):
+        path = os.path.join(args.graph_dir, directory)
+        labels[directory] = get_binary_labels(path)
 
+    with open(args.onehot_data_output, 'w') as f:
+        f.write(json.dumps(labels))
 
+    build_onehot(args.metagraph, args.onehot_data_output)
 
 if __name__ == '__main__':
     main()
