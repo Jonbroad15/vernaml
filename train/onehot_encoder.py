@@ -3,12 +3,45 @@ import json
 import os
 import sys
 import pickle
+import numpy as np
+import networkx as nx
 from collections import Counter, defaultdict
+from tqdm import tqdm
 
 script_dir = os.path.dirname(os.path.realpath(__file__))
 sys.path.append(os.path.join(script_dir, '..'))
 
 from tools.meta_graph import MGraph, MGraphAll, MGraphNC
+from prepare_data.slice import get_pbid
+
+def get_node_labels(graph_dir):
+    """
+    Get labels at the node level, return a dictionary
+
+    :param graph_dir: directory of nx graphs
+    :return labels: dictionary of labels
+    """
+    tasks = ['rna', 'protein', 'ligand', 'ion']
+
+
+    labels = {}
+    for task in tasks:
+        labels[task] = {}
+
+
+    for graph_file in os.listdir(graph_dir):
+        if '.nx' not in graph_file: continue
+        # try:
+        g = nx.read_gpickle(os.path.join(graph_dir, graph_file))
+        # except ValueError:
+            # print('could not read graph: ', graph_file)
+            # continue
+        for node in g.nodes:
+            for task in tasks:
+                labels[task][node] = g.nodes[node][task]
+
+    return labels
+
 
 def get_binary_labels(graph_dir):
     """
@@ -19,16 +52,150 @@ def get_binary_labels(graph_dir):
     # Interface graphs
     for graph_file in os.listdir(graph_dir):
         if '.nx' not in graph_file: continue
-        labels[graph_file] = 1
+        if 'C' in graph_file[4:]:
+            labels[graph_file] = 0
+        else:
+            labels[graph_file] = 1
 
-    for graph_file in os.listdir(os.path.join(graph_dir, 'complement')):
-        if '.nx' not in graph_file: continue
-        labels[graph_file] = 0
 
     return labels
 
-def build_onehot(meta_graph_path,
-                 pdb_annotations,
+def get_node_to_motifs(meta_graph_path,
+                        maximal_only=True,
+                        load_from_cache = True):
+    """
+    Parse metagraph to get a dictionary of
+                    keys = nodes
+                    values = list of motifs that node belongs to
+
+    Will try to load from cache if it exists
+
+    :param meta_graph_path:
+    :param maximal_only: if True only get the largest motif
+    :return node_to_motifs: dictionary of node to motif mappings
+    :motif_set: set of motifs contained in node_to_motifs
+    """
+    # Cache node_to_motifs mapping
+    onehot_cache = os.path.join(script_dir, '..', 'data', '.onehot_cache')
+
+    if not os.path.exists(onehot_cache):
+        os.mkdir(onehot_cache)
+
+    node_to_motifs_file = os.path.join(onehot_cache, 'node_to_motifs.p')
+    motif_set_file = os.path.join(onehot_cache, 'motif_set.p')
+    if os.path.exists(node_to_motifs_file)\
+    and os.path.exists(motif_set_file) \
+    and load_from_cache:
+        print('Loading node_to_motifs from cache')
+        with open(node_to_motifs_file, 'rb') as f:
+            node_to_motifs = pickle.load(f)
+        with open(motif_set_file, 'rb') as f:
+            motif_set = pickle.load(f)
+    else:
+        print('Building node_to_motifs from metagraph')
+        # map graph files to dict of motif occurrences
+        node_to_motifs = defaultdict(set)
+
+        maga_graph = pickle.load(open(meta_graph_path, 'rb'))
+
+        meta_nodes = sorted(maga_graph.maga_graph.nodes(data=True),
+                            key=lambda x: len(x[0]),
+                            reverse=True)
+        motif_set = set()
+        for motif, d in tqdm(meta_nodes):
+            try:
+                tuples = enumerate(d['node_set'])
+            except KeyError:
+                print('\nKeyError found at:\nmotif:', motif, '\nd:', d)
+                continue
+            for i, instance in tuples:
+                for node_id in instance:
+
+                    # Node_id are integer ids that map back to nx nodes
+                    node = maga_graph.reversed_node_map[node_id]
+
+                    # add motif to the node
+                    if maximal_only:
+                        # make sure larger motif not already counted
+                        for larger in node_to_motifs[node]:
+                            if motif.issubset(larger):
+                                break
+                        else:
+                            node_to_motifs[node].add(motif)
+                            motif_set.add(motif)
+                    else:
+                        node_to_motifs[node].add(motif)
+                        motif_set.add(motif)
+
+        with open(node_to_motifs_file, 'wb') as f:
+            pickle.dump(node_to_motifs, f)
+        with open(motif_set_file, 'wb') as f:
+            pickle.dump(motif_set, f)
+
+
+    # print('node_to_motifs: ', node_to_motifs.keys())
+    # for node, motif in node_to_motifs.items():
+        # print('node: ', node)
+        # print('motif: ', motif)
+    # print(motif_set)
+    return node_to_motifs, motif_set
+
+def build_onehot_nodes(meta_graph_path,
+                 node_labels,
+                 interface_dir,
+                 load_from_cache=True,
+                 maximal_only=True):
+    """
+    Extracts one_hots for each node in the set interface_dir
+
+    :param meta_graph_path: path to meta graph
+    :param interface_dir: directory of graphs
+    :param maximal_only: if True, only keeps largest motif if superset.
+
+    :return X: one hot array of number of nodes in all graphs by number of motifs.
+    """
+
+    from sklearn.preprocessing import OneHotEncoder
+
+    node_to_motifs, motif_set = get_node_to_motifs(meta_graph_path,
+                                                    load_from_cache=load_from_cache)
+
+    # print(node_to_motifs)
+    # print(motif_set)
+
+    # get one hot
+    hot_map = {motif: i for i, motif in enumerate(sorted(motif_set))}
+    X = np.zeros((len(node_labels), len(hot_map)))
+    target_labels = []
+    # print('node_labels keys:')
+    # for key in node_labels.keys():
+        # if '1csl.nx' in key:
+            # print(key)
+    # print('node_to_motifs keys:')
+    # for key in node_to_motifs.keys():
+        # if '1csl.nx' in key:
+            # print(key)
+
+    # print(list(node_labels.keys())[:10])
+    # print(list(node_to_motifs.keys())[:10])
+    for i, (node, label) in enumerate(node_labels.items()):
+        target_labels.append(str(label))
+        for motif in node_to_motifs[node]:
+            X[i][hot_map[motif]] = 1
+
+        # target_labels.append(label)
+
+    target_encode = {label: i for i, label in
+                     enumerate(sorted(list(set(target_labels))))}
+
+    print(target_encode)
+    y = [target_encode[label] for label in target_labels]
+
+    return X, y
+
+def build_onehot_graphs(meta_graph_path,
+                 graph_annotations,
+                 interface_dir,
                  maximal_only=True,
                  task='ALL'
                  ):
@@ -36,7 +203,7 @@ def build_onehot(meta_graph_path,
     Extract onehots for each PDB in the meta_graph
 
     :param meta_graph_path: path to meta graph
-    :param pdb_annotations: JSON file containing  { graph : label }
+    :param graph_annotations: JSON file containing  { graph : label }
     :param maximal_only: if True, only keeps largest motif if superset.
 
     :return X: one hot array of number of PDBs by number of motifs.
@@ -44,60 +211,65 @@ def build_onehot(meta_graph_path,
 
     from sklearn.preprocessing import OneHotEncoder
 
-    # map pdbs to dict of motif occurrences
-    pdb_to_motifs = defaultdict(Counter)
+    # map graph files to dict of motif occurrences
+    # TODO: change interface graphs to be in the same containing folder 
+    #       and use new nomenclature
+    graph_to_motifs = defaultdict(Counter)
 
-    with open(pdb_annotations, 'r') as labels:
-        pdb_annot_dict = json.load(labels)
+    with open(graph_annotations, 'r') as labels:
+        graph_annot_dict = json.load(labels)
 
     maga_graph = pickle.load(open(meta_graph_path, 'rb'))
 
-    print('\nmaga_graph attributes: ', dir(maga_graph))
+    # print('\nmaga_graph attributes: ', dir(maga_graph))
     meta_nodes = sorted(maga_graph.maga_graph.nodes(data=True),
                         key=lambda x: len(x[0]),
                         reverse=True)
     motif_set = set()
+    for motif, d in tqdm(meta_nodes):
+        # TODO: performance of this function can be optimized
+        # - First turn the frozensets into one big set
+        # - then for each node in the graph loop through motifs and check if it is in there
+        for i, instance in tqdm(enumerate(d['node_set'])):
+            for node_id in instance:
+                # print('node_id:', node_id)
+                # print('reversed_node_map: ', maga_graph.reversed_node_map[node_id])
+                # Node_id are integer ids that map back to nx nodes
+                node = maga_graph.reversed_node_map[node_id]
+                pbid = (node[0])[:4]
+                graphs = os.listdir(interface_dir)
+                for graph_file in graphs:
+                    if pbid not in graph_file: continue
+                    path = os.path.join(interface_dir, graph_file)
+                    g = nx.read_gpickle(path)
+                    if node in g.nodes:
 
-    for motif, d in meta_nodes:
-        # motif_id = "-".join(map(str, list(motif)))
-        for i, instance in enumerate(d['node_set']):
-            print(instance)
-            node = list(instance).pop()
-            pdbid = node[0].split("_")[0]
-
-            # skip if we don't have annotation for this pdb
-            # TODO: Change this to a node intersection 
-            if pdbid not in pdb_annot_dict[task]:
-                print("Missing")
-                continue
-
-            if maximal_only:
-                # make sure larger motif not already counted
-                for larger in pdb_to_motifs[pdbid].keys():
-                    if motif.issubset(larger):
-                        break
-                else:
-                    pdb_to_motifs[pdbid].update([motif])
-                    motif_set.add(motif)
-            else:
-                pdb_to_motifs[pdbid].update([motif])
-                motif_set.add(motif)
-
-    return
+                    # add motif to the graph
+                        if maximal_only:
+                            # make sure larger motif not already counted
+                            for larger in graph_to_motifs[graph_file].keys():
+                                if motif.issubset(larger):
+                                    break
+                            else:
+                                graph_to_motifs[graph_file].update([motif])
+                                motif_set.add(motif)
+                        else:
+                            graph_to_motifs[graph_file].update([motif])
+                            motif_set.add(motif)
 
     # get one hot
     hot_map = {motif: i for i, motif in enumerate(sorted(motif_set))}
-    X = np.zeros((len(pdb_to_motifs), len(hot_map)))
-    pdbs = []
-    for i, (pdb, motif_counts) in enumerate(pdb_to_motifs.items()):
-        pdbs.append(pdb)
+    X = np.zeros((len(graph_to_motifs), len(hot_map)))
+    graphs = []
+    for i, (graph, motif_counts) in enumerate(graph_to_motifs.items()):
+        graphs.append(graph)
         for motif, count in motif_counts.items():
             X[i][hot_map[motif]] = count
 
     # encode prediction targets
     target_labels = []
-    for pdb in pdbs:
-        label = pdb_annot_dict[task][pdb]
+    for graph in graphs:
+        label = graph_annot_dict[task][graph]
         target_labels.append(label)
 
     target_encode = {label: i for i, label in
@@ -107,27 +279,91 @@ def build_onehot(meta_graph_path,
 
     return X, y
 
+def accuracy(X, y):
+    """
+    :param task, which task to predict on.
+    """
+    from sklearn.model_selection import train_test_split
+    from sklearn.linear_model import SGDClassifier
+    from sklearn.dummy import DummyClassifier
+
+    print(f"Data shape {X.shape}.")
+
+    X_train, X_test, y_train, y_test = train_test_split(X,
+                                                        y,
+                                                        test_size=.2,
+                                                        random_state=0
+                                                        )
+
+    dummy = DummyClassifier(strategy='stratified').fit(X_train, y_train)
+    dummy_acc = dummy.score(X_test, y_test)
+
+    model = SGDClassifier().fit(X_train, y_train)
+    acc = model.score(X_test, y_test)
+
+    print("accuracy ", acc)
+    print("dummy ", dummy_acc)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('-G', '--graph_dir',
-                        help='directory containing graphs to predict on')
+                        help='directory containing graphs to predict on',
+                        default=os.path.join(script_dir, '..', 'data', 'graphs',
+                                            'interfaces_pickle4', 'all'))
     parser.add_argument('-onehot_data_output',
                         help='JSON output for onehot data',
                         default=os.path.join(script_dir, '..', 'data', 'onehot_data.json'))
     parser.add_argument('-m', '--metagraph',
                         help = 'Metagraph of Motifs from vernal',
                         default = os.path.join(script_dir, '..', 'data', 'general_fuzzy.p'))
+    parser.add_argument('-n', action='store_false',
+                        help='option to build onehots at the node level',
+                        default=True)
+    parser.add_argument('-c', action='store_false',
+                        help='clear cache', default=True)
     args = parser.parse_args()
 
-    labels = {}
-    for directory in os.listdir(args.graph_dir):
-        path = os.path.join(args.graph_dir, directory)
-        labels[directory] = get_binary_labels(path)
+    for task in ['protein', 'ion', 'ligand', 'all', 'rna']:
+        print('Computing accuracy for: ', task)
+        if args.n:
+            print('doing node_level predictions')
+            labels = {}
+            labels = get_node_labels(args.graph_dir)
 
-    with open(args.onehot_data_output, 'w') as f:
-        f.write(json.dumps(labels))
+            X, y = build_onehot_nodes(args.metagraph, labels[task], args.graph_dir,
+                                        load_from_cache=args.c)
+        else:
+            # FOR JUST ONE TASK
+            labels = {}
+            labels['ALL'] = get_binary_labels(args.graph_dir)
 
-    build_onehot(args.metagraph, args.onehot_data_output)
+            # FOR MULTIPLE TASKS
+            # labels = {}
+            # for directory in os.listdir(args.graph_dir):
+                # path = os.path.join(args.graph_dir, directory)
+                # labels[directory] = get_binary_labels(path)
+
+            with open(args.onehot_data_output, 'w') as f:
+                f.write(json.dumps(labels))
+
+            X, y = build_onehot_graphs(args.metagraph,
+                    args.onehot_data_output, args.graph_dir)
+
+
+        # print('\nX:\n')
+        # for node in X:
+            # zero = one = 0
+            # for motif in node:
+                # if motif == 0:
+                    # zero +=1
+                # elif motif == 1:
+                    # one +=1
+            # if one > 1:
+                # print('zeros: ', zero)
+                # print('ones: ', one)
+
+        accuracy(X, y)
 
 if __name__ == '__main__':
     main()
