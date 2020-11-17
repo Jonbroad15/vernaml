@@ -251,11 +251,6 @@ def slice_all(native_dir, output_dir, subset, quiet=False):
     (See parse_subset_fromcsv for more info)
     :return:
     """
-    try:
-        os.mkdir(os.path.join(output_dir, 'complement'))
-    except FileExistsError:
-        print('complement directory already exists! make sure you are not overwriting')
-    comp_dir = os.path.join(output_dir, 'complement')
 
     failed_slices = []
 
@@ -310,12 +305,12 @@ def slice_all(native_dir, output_dir, subset, quiet=False):
                         for comp in complement_graphs:
                             if get_num_nodes(comp) > 5:
                                 add_labels(comp)
-                                name = (pbid_name + '_' + str(i) +'_'+ str(j) +'.nx')
-                                nx.write_gpickle(comp, os.path.join(comp_dir, name))
+                                name = (pbid_name + '_' + str(i) +'_'+'C'+'_'+ str(j) +'.nx')
+                                nx.write_gpickle(comp, os.path.join(output_dir, name))
                                 j+=1
                     else:
-                        name = (pbid_name + '_' + str(i) +'.nx')
-                        nx.write_gpickle(balanced_comp, os.path.join(comp_dir, name ))
+                        name = (pbid_name + '_' + str(i) +'_'+'C'+'_'+ '0' +'.nx')
+                        nx.write_gpickle(balanced_comp, os.path.join(output_dir, name ))
 
                 # Add labels to the node attributes
                 add_labels(h, subset[pbid])
