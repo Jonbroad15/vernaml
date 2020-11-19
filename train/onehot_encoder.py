@@ -7,6 +7,9 @@ import numpy as np
 import networkx as nx
 from collections import Counter, defaultdict
 from tqdm import tqdm
+import csv
+from sklearn.linear_model import SGDClassifier
+from sklearn.dummy import DummyClassifier
 
 script_dir = os.path.dirname(os.path.realpath(__file__))
 sys.path.append(os.path.join(script_dir, '..'))
@@ -14,20 +17,16 @@ sys.path.append(os.path.join(script_dir, '..'))
 from tools.meta_graph import MGraph, MGraphAll, MGraphNC
 from prepare_data.slice import get_pbid
 
-def get_node_labels(graph_dir):
+def get_node_labels(graph_dir, task):
     """
     Get labels at the node level, return a dictionary
 
     :param graph_dir: directory of nx graphs
     :return labels: dictionary of labels
     """
-    tasks = ['rna', 'protein', 'ligand', 'ion']
-
 
     labels = {}
-    for task in tasks:
-        labels[task] = {}
-
+    keyerrors = []
 
     for graph_file in os.listdir(graph_dir):
         if '.nx' not in graph_file: continue
@@ -37,8 +36,14 @@ def get_node_labels(graph_dir):
             # print('could not read graph: ', graph_file)
             # continue
         for node in g.nodes:
-            for task in tasks:
-                labels[task][node] = g.nodes[node][task]
+            try:
+                labels[node] = g.nodes[node][task]
+            except KeyError:
+                keyerrors.append(node)
+
+    if len(keyerrors) > 0: print('key errors found in the following nodes:')
+    for line in keyerrors:
+        print(line)
 
     return labels
 
@@ -60,7 +65,7 @@ def get_binary_labels(graph_dir):
 
     return labels
 
-def get_node_to_motifs(meta_graph_path,
+def get_motifs_metagraph(meta_graph_path,
                         maximal_only=True,
                         load_from_cache = True):
     """
@@ -140,11 +145,35 @@ def get_node_to_motifs(meta_graph_path,
     # print(motif_set)
     return node_to_motifs, motif_set
 
-def build_onehot_nodes(meta_graph_path,
-                 node_labels,
-                 interface_dir,
-                 load_from_cache=True,
-                 maximal_only=True):
+def get_motifs_json(json_dict):
+    """
+    Create mapping of nodes to motifs from json dict
+
+    :param json_file: path to json file containing motifs
+    :return node_to_motifs: dictionary mapping nodes to motifs
+    :return motif_set: set of motifs found
+    """
+
+    node_to_motifs = defaultdict(set)
+    motif_set = set()
+
+    for motif, instances in json_dict.items():
+        for instance in instances:
+            for node_dict in instance:
+                node = node_dict['node']
+                node[1] = tuple(node[1])
+                node = tuple(node)
+
+                node_to_motifs[node].add(motif)
+                motif_set.add(motif)
+
+    return node_to_motifs, motif_set
+
+def build_onehot_nodes(node_labels,interface_dir,
+                                 meta_graph_path=None,
+                                 json_motifs=None,
+                                 load_from_cache=True,
+                                 maximal_only=True):
     """
     Extracts one_hots for each node in the set interface_dir
 
@@ -157,8 +186,13 @@ def build_onehot_nodes(meta_graph_path,
 
     from sklearn.preprocessing import OneHotEncoder
 
-    node_to_motifs, motif_set = get_node_to_motifs(meta_graph_path,
-                                                    load_from_cache=load_from_cache)
+    if meta_graph_path:
+        node_to_motifs, motif_set = get_motifs_metagraph(meta_graph_path,
+                                                        load_from_cache=load_from_cache)
+    elif json_motifs:
+        node_to_motifs, motif_set = get_motifs_json(json_motifs)
+    else:
+        raise Exception("Build_onehot_nodes needs a metagraph or json_motifs")
 
     # print(node_to_motifs)
     # print(motif_set)
@@ -188,7 +222,7 @@ def build_onehot_nodes(meta_graph_path,
     target_encode = {label: i for i, label in
                      enumerate(sorted(list(set(target_labels))))}
 
-    print(target_encode)
+    # print(target_encode)
     y = [target_encode[label] for label in target_labels]
 
     return X, y
@@ -279,13 +313,25 @@ def build_onehot_graphs(meta_graph_path,
 
     return X, y
 
-def accuracy(X, y):
+def kfold(X, y):
+
+    from sklearn.model_selection import cross_val_score
+
+    scores = cross_val_score(SGDClassifier(), X, y)
+    dummy_scores = cross_val_score(DummyClassifier(strategy='stratified'),
+                                    X, y)
+
+    print(scores)
+    print("Accuracy: %0.2f (+/- %0.2f)" % (scores.mean(), scores.std() * 2))
+    print("Dummy: %0.2f (+/- %0.2f)" % (dummy_scores.mean(), dummy_scores.std() * 2))
+
+    return (scores.mean(), dummy_scores.mean())
+
+def compute_accuracy(X, y):
     """
     :param task, which task to predict on.
     """
     from sklearn.model_selection import train_test_split
-    from sklearn.linear_model import SGDClassifier
-    from sklearn.dummy import DummyClassifier
 
     print(f"Data shape {X.shape}.")
 
@@ -304,66 +350,71 @@ def accuracy(X, y):
     print("accuracy ", acc)
     print("dummy ", dummy_acc)
 
+    return (round(acc, 3), round(dummy_acc, 3))
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('-G', '--graph_dir',
                         help='directory containing graphs to predict on',
                         default=os.path.join(script_dir, '..', 'data', 'graphs',
-                                            'interfaces_pickle4', 'all'))
+                                            'interfaces_pickle4'))
     parser.add_argument('-onehot_data_output',
                         help='JSON output for onehot data',
                         default=os.path.join(script_dir, '..', 'data', 'onehot_data.json'))
     parser.add_argument('-m', '--metagraph',
-                        help = 'Metagraph of Motifs from vernal',
-                        default = os.path.join(script_dir, '..', 'data', 'general_fuzzy.p'))
+                        help = 'Metagraph of Motifs from vernal')
+                        #default = os.path.join(script_dir, '..', 'data', 'general_fuzzy.p'))
+    parser.add_argument('-j', '--json_motifs',
+                        help='motifs given in a json serialization instead of metagraph')
     parser.add_argument('-n', action='store_false',
                         help='option to build onehots at the node level',
                         default=True)
     parser.add_argument('-c', action='store_false',
                         help='clear cache', default=True)
+    parser.add_argument('-o', '--accuracy_output',
+                        help='output accuracy table to csv file')
+    parser.add_argument('-t', '--tasks', default = 'rna ligand protein ion')
     args = parser.parse_args()
 
-    for task in ['protein', 'ion', 'ligand', 'all', 'rna']:
+    tasks = args.tasks.split()
+    accuracy = defaultdict(dict)
+
+    for task in tasks:
         print('Computing accuracy for: ', task)
-        if args.n:
-            print('doing node_level predictions')
-            labels = {}
-            labels = get_node_labels(args.graph_dir)
+        print('Doing node_level predictions')
+        labels = {}
+        labels = get_node_labels(os.path.join(args.graph_dir, task), task)
 
-            X, y = build_onehot_nodes(args.metagraph, labels[task], args.graph_dir,
-                                        load_from_cache=args.c)
-        else:
-            # FOR JUST ONE TASK
-            labels = {}
-            labels['ALL'] = get_binary_labels(args.graph_dir)
+        if args.metagraph:
+            X, y = build_onehot_nodes(labels, args.graph_dir,
+                                        load_from_cache=args.c,
+                                        meta_graph_path=args.metagraph)
+            accuracy['vernal'][task] = kfold(X, y)
 
-            # FOR MULTIPLE TASKS
-            # labels = {}
-            # for directory in os.listdir(args.graph_dir):
-                # path = os.path.join(args.graph_dir, directory)
-                # labels[directory] = get_binary_labels(path)
-
-            with open(args.onehot_data_output, 'w') as f:
-                f.write(json.dumps(labels))
-
-            X, y = build_onehot_graphs(args.metagraph,
-                    args.onehot_data_output, args.graph_dir)
+        if args.json_motifs:
+            with open(args.json_motifs, 'r') as f:
+                data = json.load(f)
+            for name, motif_set in data.items():
+                print('Motif Set: ', name)
+                X, y = build_onehot_nodes(labels, args.graph_dir,
+                                            load_from_cache=args.c,
+                                            json_motifs=motif_set)
+                accuracy[name][task] = kfold(X, y)
 
 
-        # print('\nX:\n')
-        # for node in X:
-            # zero = one = 0
-            # for motif in node:
-                # if motif == 0:
-                    # zero +=1
-                # elif motif == 1:
-                    # one +=1
-            # if one > 1:
-                # print('zeros: ', zero)
-                # print('ones: ', one)
+    print(accuracy)
 
-        accuracy(X, y)
+    if args.accuracy_output:
+        with open(args.accuracy_output, 'w') as f:
+            writer = csv.writer(f, delimiter='\t')
+            motif_sets = list(accuracy.keys())
+            writer.writerow(['task'] + motif_sets)
+            for task in tasks:
+                row = [accuracy[name][task] for name in motif_sets]
+                # dummy_row = [accuracy[name][task][1] for name in motif_sets]
+                writer.writerow([task] + row)
+                # writer.writerow([task + '_dummy'] + dummy_row)
+
 
 if __name__ == '__main__':
     main()
