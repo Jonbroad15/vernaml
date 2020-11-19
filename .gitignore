@@ -1,6 +1,7 @@
 **__pycache__**
 data/*
 !data/ligand_list.txt
+!data/all_motifs_unchopped.json
 *.swp
 junk/
 junk*
