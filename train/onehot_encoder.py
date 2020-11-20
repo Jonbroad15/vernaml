@@ -197,6 +197,7 @@ def build_onehot_nodes(node_labels,interface_dir,
     # print(node_to_motifs)
     # print(motif_set)
 
+    print('Building onehot')
     # get one hot
     hot_map = {motif: i for i, motif in enumerate(sorted(motif_set))}
     X = np.zeros((len(node_labels), len(hot_map)))
@@ -316,6 +317,8 @@ def build_onehot_graphs(meta_graph_path,
 def kfold(X, y):
 
     from sklearn.model_selection import cross_val_score
+
+    print('Data shape: ', X.shape)
 
     scores = cross_val_score(SGDClassifier(), X, y)
     dummy_scores = cross_val_score(DummyClassifier(strategy='stratified'),
