@@ -389,6 +389,7 @@ def main():
         labels = get_node_labels(os.path.join(args.graph_dir, task), task)
 
         if args.metagraph:
+            print('Motif Set: vernal')
             X, y = build_onehot_nodes(labels, args.graph_dir,
                                         load_from_cache=args.c,
                                         meta_graph_path=args.metagraph)
