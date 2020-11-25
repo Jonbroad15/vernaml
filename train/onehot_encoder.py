@@ -5,17 +5,52 @@ import sys
 import pickle
 import numpy as np
 import networkx as nx
+import matplotlib.pyplot as plt
 from collections import Counter, defaultdict
 from tqdm import tqdm
 import csv
-from sklearn.linear_model import SGDClassifier
+from sklearn.linear_model import SGDClassifier, LinearRegression
 from sklearn.dummy import DummyClassifier
+from sklearn.model_selection import train_test_split
 
 script_dir = os.path.dirname(os.path.realpath(__file__))
 sys.path.append(os.path.join(script_dir, '..'))
 
 from tools.meta_graph import MGraph, MGraphAll, MGraphNC
 from prepare_data.slice import get_pbid
+
+def get_binary_node_labels(graph_dir, task):
+    """
+    Get labels at the node level, return a dictionary
+
+    :param graph_dir: directory of nx graphs
+    :return labels: dictionary of labels
+    """
+
+    labels = {}
+    keyerrors = []
+
+    for graph_file in os.listdir(graph_dir):
+        if '.nx' not in graph_file: continue
+        # try:
+        g = nx.read_gpickle(os.path.join(graph_dir, graph_file))
+        # except ValueError:
+            # print('could not read graph: ', graph_file)
+            # continue
+        for node in g.nodes:
+            try:
+                if g.nodes[node][task]:
+                    labels[node] = 1
+                else:
+                    labels[node] = 0
+            except KeyError:
+                keyerrors.append(node)
+
+    if len(keyerrors) > 0: print('key errors found in the following nodes:')
+    for line in keyerrors:
+        print(line)
+
+    return labels
 
 def get_node_labels(graph_dir, task):
     """
@@ -330,11 +365,75 @@ def kfold(X, y):
 
     return (scores.mean(), dummy_scores.mean())
 
+def draw_roc(data, save_fig, task):
+    """
+    Draw ROC curve for binary classification task
+    """
+    from sklearn.metrics import roc_curve, roc_auc_score
+    from sklearn.ensemble import RandomForestClassifier
+    plt.clf()
+    first = True
+
+    task_to_name = {'rna': 'RNA',
+                    'ion': 'Ion',
+                    'ligand': 'Small Molecule',
+                    'protein': 'Protein'}
+
+    for X, y, label in data:
+        print(f"Data shape {X.shape}.")
+
+        X_train, X_test, y_train, y_test = train_test_split(X,
+                                                            y,
+                                                            test_size=.2,
+                                                            random_state=0
+                                                            )
+
+        # fit a model
+        # rf = RandomForestClassifier(max_features = 5,n_estimators = 500)
+        classifier = SGDClassifier()
+        model = classifier.fit(X_train, y_train)
+
+        # get prediction probabilities
+        r_probs = [0 for _ in range(len(y_test))]
+        model_probs = model.decision_function(X_test)
+        # model_probs = model_probs[:, 1]
+
+        # Compute AUROC and draw ROC
+        r_auc = roc_auc_score(y_test, r_probs)
+        model_auc = roc_auc_score(y_test, model_probs)
+
+        # print scores:
+        print(f'{label} AUROC = %.3f' % (model_auc))
+
+        # Calculate ROC curve
+        r_fpr, r_tpr, _ = roc_curve(y_test, r_probs)
+        # print(r_probs)
+        model_fpr, model_tpr, _ = roc_curve(y_test, model_probs)
+
+        # Plot the curve
+        if first: plt.plot(r_fpr, r_tpr, linestyle='--',
+                    label='Random (AUROC = %0.3f)' % r_auc)
+        plt.plot(model_fpr, model_tpr,
+                label=f'{label} (AUROC = %0.3f)' % model_auc)
+
+
+        # Title
+        plt.title(f'RNA-{task_to_name[task]}')
+        # Axis labels
+        plt.xlabel('False Positive Rate')
+        plt.ylabel('True Positive Rate')
+
+        first = False
+    # Show legend
+    plt.legend() # 
+    # Show plot
+    plt.savefig(save_fig)
+
+
 def compute_accuracy(X, y):
     """
     :param task, which task to predict on.
     """
-    from sklearn.model_selection import train_test_split
 
     print(f"Data shape {X.shape}.")
 
@@ -377,23 +476,29 @@ def main():
     parser.add_argument('-o', '--accuracy_output',
                         help='output accuracy table to csv file')
     parser.add_argument('-t', '--tasks', default = 'rna ligand protein ion')
+    parser.add_argument('-f', '--fig_dir',
+                        help='directory to save ROC figures',
+                        default = os.path.join(script_dir, '..', 'images', 'rocs'))
     args = parser.parse_args()
 
     tasks = args.tasks.split()
     accuracy = defaultdict(dict)
+    roc_data = []
 
     for task in tasks:
         print('Computing accuracy for: ', task)
         print('Doing node_level predictions')
         labels = {}
-        labels = get_node_labels(os.path.join(args.graph_dir, task), task)
+        labels = get_binary_node_labels(os.path.join(args.graph_dir, task), task)
 
         if args.metagraph:
-            print('Motif Set: vernal')
+            name = 'vernal'
+            print('Motif Set:', name)
             X, y = build_onehot_nodes(labels, args.graph_dir,
                                         load_from_cache=args.c,
                                         meta_graph_path=args.metagraph)
-            accuracy['vernal'][task] = kfold(X, y)
+            # accuracy['vernal'][task] = kfold(X, y)
+            roc_data.append((X, y, name))
 
         if args.json_motifs:
             with open(args.json_motifs, 'r') as f:
@@ -403,10 +508,12 @@ def main():
                 X, y = build_onehot_nodes(labels, args.graph_dir,
                                             load_from_cache=args.c,
                                             json_motifs=motif_set)
-                accuracy[name][task] = kfold(X, y)
+               # accuracy[name][task] = kfold(X, y)
+                roc_data.append((X, y, name))
 
+        draw_roc(roc_data, os.path.join(args.fig_dir, task))
 
-    print(accuracy)
+    # print(accuracy)
 
     if args.accuracy_output:
         with open(args.accuracy_output, 'w') as f:
