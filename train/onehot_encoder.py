@@ -380,7 +380,7 @@ def draw_roc(data, save_fig, task):
                     'protein': 'Protein'}
 
     for X, y, label in data:
-        print(f"Data shape {X.shape}.")
+        print(f"Data shape {X.shape}")
 
         X_train, X_test, y_train, y_test = train_test_split(X,
                                                             y,
@@ -425,7 +425,7 @@ def draw_roc(data, save_fig, task):
 
         first = False
     # Show legend
-    plt.legend() # 
+    plt.legend()
     # Show plot
     plt.savefig(save_fig)
 
@@ -511,7 +511,7 @@ def main():
                # accuracy[name][task] = kfold(X, y)
                 roc_data.append((X, y, name))
 
-        draw_roc(roc_data, os.path.join(args.fig_dir, task))
+        draw_roc(roc_data, os.path.join(args.fig_dir, task), task)
 
     # print(accuracy)
 
