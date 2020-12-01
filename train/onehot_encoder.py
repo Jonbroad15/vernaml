@@ -17,6 +17,7 @@ script_dir = os.path.dirname(os.path.realpath(__file__))
 sys.path.append(os.path.join(script_dir, '..'))
 
 from tools.meta_graph import MGraph, MGraphAll, MGraphNC
+from tools.graph_utils import bfs_expand
 from prepare_data.slice import get_pbid
 
 def get_binary_node_labels(graph_dir, task):
@@ -180,7 +181,7 @@ def get_motifs_metagraph(meta_graph_path,
     # print(motif_set)
     return node_to_motifs, motif_set
 
-def get_motifs_json(json_dict):
+def get_motifs_json(json_dict, native_dir):
     """
     Create mapping of nodes to motifs from json dict
 
@@ -188,6 +189,8 @@ def get_motifs_json(json_dict):
     :return node_to_motifs: dictionary mapping nodes to motifs
     :return motif_set: set of motifs found
     """
+
+    graphs = os.listdir(native_dir)
 
     node_to_motifs = defaultdict(set)
     motif_set = set()
@@ -199,12 +202,16 @@ def get_motifs_json(json_dict):
                 node[1] = tuple(node[1])
                 node = tuple(node)
 
+                graph = node[0]
+                if graph not in graphs:
+                    continue
+
                 node_to_motifs[node].add(motif)
                 motif_set.add(motif)
 
     return node_to_motifs, motif_set
 
-def build_onehot_nodes(node_labels,interface_dir,
+def build_onehot_nodes(node_labels, native_dir,
                                  meta_graph_path=None,
                                  json_motifs=None,
                                  load_from_cache=True,
@@ -212,6 +219,7 @@ def build_onehot_nodes(node_labels,interface_dir,
     """
     Extracts one_hots for each node in the set interface_dir
 
+    :param node_labels: JSON dictionary of target labels
     :param meta_graph_path: path to meta graph
     :param interface_dir: directory of graphs
     :param maximal_only: if True, only keeps largest motif if superset.
@@ -225,43 +233,44 @@ def build_onehot_nodes(node_labels,interface_dir,
         node_to_motifs, motif_set = get_motifs_metagraph(meta_graph_path,
                                                         load_from_cache=load_from_cache)
     elif json_motifs:
-        node_to_motifs, motif_set = get_motifs_json(json_motifs)
+        node_to_motifs, motif_set = get_motifs_json(json_motifs, native_dir)
     else:
         raise Exception("Build_onehot_nodes needs a metagraph or json_motifs")
 
-    # print(node_to_motifs)
-    # print(motif_set)
+    node_to_motifs = extend_motifs(node_to_motifs, native_dir)
 
     print('Building onehot')
     # get one hot
     hot_map = {motif: i for i, motif in enumerate(sorted(motif_set))}
     X = np.zeros((len(node_labels), len(hot_map)))
     target_labels = []
-    # print('node_labels keys:')
-    # for key in node_labels.keys():
-        # if '1csl.nx' in key:
-            # print(key)
-    # print('node_to_motifs keys:')
-    # for key in node_to_motifs.keys():
-        # if '1csl.nx' in key:
-            # print(key)
-
-    # print(list(node_labels.keys())[:10])
-    # print(list(node_to_motifs.keys())[:10])
     for i, (node, label) in enumerate(node_labels.items()):
         target_labels.append(str(label))
         for motif in node_to_motifs[node]:
             X[i][hot_map[motif]] = 1
 
-        # target_labels.append(label)
-
     target_encode = {label: i for i, label in
                      enumerate(sorted(list(set(target_labels))))}
 
-    # print(target_encode)
     y = [target_encode[label] for label in target_labels]
 
     return X, y
+
+def extend_motifs(node_to_motifs, graph_dir):
+    """
+    extend motif mapping by collectin motifs from all nodes connected to the given node
+    """
+
+    nodes = list(node_to_motifs.keys())
+
+    print('extending motifs')
+    for node in tqdm(nodes):
+        graph_file = node[0]
+        g = nx.read_gpickle(os.path.join(graph_dir, graph_file))
+        for neighbour in bfs_expand(g, [node], depth=1):
+            node_to_motifs[node] = node_to_motifs[neighbour] | node_to_motifs[node]
+
+    return node_to_motifs
 
 def build_onehot_graphs(meta_graph_path,
                  graph_annotations,
@@ -365,68 +374,69 @@ def kfold(X, y):
 
     return (scores.mean(), dummy_scores.mean())
 
-def draw_roc(data, save_fig, task):
+def draw_roc(roc_data, save_fig):
     """
     Draw ROC curve for binary classification task
     """
     from sklearn.metrics import roc_curve, roc_auc_score
     from sklearn.ensemble import RandomForestClassifier
     plt.clf()
-    first = True
-
+    plt.figure(figsize=(15,10))
     task_to_name = {'rna': 'RNA',
                     'ion': 'Ion',
                     'ligand': 'Small Molecule',
                     'protein': 'Protein'}
 
-    for X, y, label in data:
-        print(f"Data shape {X.shape}")
+    for i, (task, data) in enumerate(roc_data.items()):
+        rcurve_not_made = True
+        plt.subplot(2, 2, i+1)
+        for X, y, label in data:
+            print(f"{task}, {label}: shape = {X.shape}")
 
-        X_train, X_test, y_train, y_test = train_test_split(X,
-                                                            y,
-                                                            test_size=.2,
-                                                            random_state=0
-                                                            )
+            X_train, X_test, y_train, y_test = train_test_split(X, y,
+                                                                test_size=.2,
+                                                                random_state=0)
 
-        # fit a model
-        # rf = RandomForestClassifier(max_features = 5,n_estimators = 500)
-        classifier = SGDClassifier()
-        model = classifier.fit(X_train, y_train)
+            # Plot random curve
+            if rcurve_not_made:
+                r_probs = [0 for _ in range(len(y_test))]
+                r_auc = roc_auc_score(y_test, r_probs)
+                r_fpr, r_tpr, _ = roc_curve(y_test, r_probs)
+                plt.plot(r_fpr, r_tpr, linestyle='--',
+                        label='Random (AUROC = %0.3f)' % r_auc)
+                rcurve_not_made = False
+            # fit a model
+            classifier = SGDClassifier()
+            model = classifier.fit(X_train, y_train)
 
-        # get prediction probabilities
-        r_probs = [0 for _ in range(len(y_test))]
-        model_probs = model.decision_function(X_test)
-        # model_probs = model_probs[:, 1]
+            # get prediction probabilities
+            model_probs = model.decision_function(X_test)
 
-        # Compute AUROC and draw ROC
-        r_auc = roc_auc_score(y_test, r_probs)
-        model_auc = roc_auc_score(y_test, model_probs)
+            # Compute AUROC and draw ROC
+            model_auc = roc_auc_score(y_test, model_probs)
 
-        # print scores:
-        print(f'{label} AUROC = %.3f' % (model_auc))
+            # print scores:
+            print(f'{task}, {label}: AUROC = %.3f' % (model_auc))
 
-        # Calculate ROC curve
-        r_fpr, r_tpr, _ = roc_curve(y_test, r_probs)
-        # print(r_probs)
-        model_fpr, model_tpr, _ = roc_curve(y_test, model_probs)
+            # Calculate ROC curve
+            model_fpr, model_tpr, _ = roc_curve(y_test, model_probs)
 
-        # Plot the curve
-        if first: plt.plot(r_fpr, r_tpr, linestyle='--',
-                    label='Random (AUROC = %0.3f)' % r_auc)
-        plt.plot(model_fpr, model_tpr,
-                label=f'{label} (AUROC = %0.3f)' % model_auc)
+            # Plot ROC curve
+            plt.plot(model_fpr, model_tpr,
+                       label=f'{label} (AUROC = %0.3f)' % model_auc)
 
 
-        # Title
-        plt.title(f'RNA-{task_to_name[task]}')
-        # Axis labels
-        plt.xlabel('False Positive Rate')
-        plt.ylabel('True Positive Rate')
+            # Title
+            plt.title(f'RNA-{task_to_name[task]}')
+            if i == 2:
+                # Axis labels
+                plt.xlabel('False Positive Rate')
+                plt.ylabel('True Positive Rate')
 
-        first = False
-    # Show legend
-    plt.legend()
-    # Show plot
+        # Show legend
+        plt.legend(loc='lower right')
+    # Save plot
+    plt.tight_layout()
     plt.savefig(save_fig)
 
 
@@ -459,7 +469,10 @@ def main():
     parser.add_argument('-G', '--graph_dir',
                         help='directory containing graphs to predict on',
                         default=os.path.join(script_dir, '..', 'data', 'graphs',
-                                            'interfaces_pickle4'))
+                                            'interfaces_cutoff5'))
+    parser.add_argument('-N', '--native_dir',
+                        help='directory containing native graphs',
+                        default = os.path.join(script_dir, '..', 'data', 'graphs', 'native'))
     parser.add_argument('-onehot_data_output',
                         help='JSON output for onehot data',
                         default=os.path.join(script_dir, '..', 'data', 'onehot_data.json'))
@@ -476,14 +489,14 @@ def main():
     parser.add_argument('-o', '--accuracy_output',
                         help='output accuracy table to csv file')
     parser.add_argument('-t', '--tasks', default = 'rna ligand protein ion')
-    parser.add_argument('-f', '--fig_dir',
-                        help='directory to save ROC figures',
+    parser.add_argument('-f', '--fig_save',
+                        help='output file for roc plots',
                         default = os.path.join(script_dir, '..', 'images', 'rocs'))
     args = parser.parse_args()
 
     tasks = args.tasks.split()
     accuracy = defaultdict(dict)
-    roc_data = []
+    roc_data = defaultdict(list)
 
     for task in tasks:
         print('Computing accuracy for: ', task)
@@ -494,7 +507,7 @@ def main():
         if args.metagraph:
             name = 'vernal'
             print('Motif Set:', name)
-            X, y = build_onehot_nodes(labels, args.graph_dir,
+            X, y = build_onehot_nodes(labels, args.native_dir,
                                         load_from_cache=args.c,
                                         meta_graph_path=args.metagraph)
             # accuracy['vernal'][task] = kfold(X, y)
@@ -505,13 +518,13 @@ def main():
                 data = json.load(f)
             for name, motif_set in data.items():
                 print('Motif Set: ', name)
-                X, y = build_onehot_nodes(labels, args.graph_dir,
+                X, y = build_onehot_nodes(labels, args.native_dir,
                                             load_from_cache=args.c,
                                             json_motifs=motif_set)
                # accuracy[name][task] = kfold(X, y)
-                roc_data.append((X, y, name))
+                roc_data[task].append((X, y, name))
 
-        draw_roc(roc_data, os.path.join(args.fig_dir, task), task)
+    draw_roc(roc_data, args.fig_save)
 
     # print(accuracy)
 
