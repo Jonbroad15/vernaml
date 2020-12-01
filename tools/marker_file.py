@@ -29,7 +29,7 @@ def pdb_to_markers(pdb, graph, output):
     gr = nx.read_gpickle(graph)
 
     res_coords = get_coords(structure)
-    print(res_coords)
+    # print(res_coords)
 
     res_to_id = lambda r: f"{r[0]}_{r[1]}"
 
@@ -64,7 +64,7 @@ def pdb_to_markers(pdb, graph, output):
             id_1 = int_to_node[n1]
             id_2 = int_to_node[n2]
         except KeyError:
-            print(n1, n2)
+            # print(n1, n2)
             continue
         else:
             if (id_1, id_2) not in done_edges and (id_2, id_1) not in done_edges:

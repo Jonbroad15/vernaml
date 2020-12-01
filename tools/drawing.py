@@ -67,14 +67,18 @@ def process_axis(axis,
                 edge_labels[(n1, n2)] = r"{0}".format(d['label'])
             continue
 
-    non_bb_edges = [(n1, n2) for n1, n2, d in g.edges(data=True) if d['label'] != 'B53']
+    non_bb_edges = [(n1, n2) for n1, n2, d in g.edges(data=True) if d['label'] == 'CWW']
+    non_cw_edges = [(n1, n2) for n1, n2, d in g.edges(data=True) \
+                                            if d['label'] not in ['CWW', 'B53']]
     bb_edges = [(n1, n2) for n1, n2, d in g.edges(data=True) if d['label'] == 'B53']
 
-    nx.draw_networkx_edges(g, pos, edgelist=non_bb_edges, ax=axis)
+    nx.draw_networkx_edges(g, pos, edgelist=non_bb_edges, width=2, edge_color='green', ax=axis)
+    nx.draw_networkx_edges(g, pos, edgelist=non_cw_edges, width=2, edge_color='red', ax=axis)
     nx.draw_networkx_edges(g, pos, edgelist=bb_edges, width=2, ax=axis)
 
     if not highlight_edges is None:
-        nx.draw_networkx_edges(g, pos, edgelist=highlight_edges, edge_color='y', width=8, alpha=0.5, ax=axis)
+        nx.draw_networkx_edges(g, pos,
+                edgelist=highlight_edges, edge_color='y', width=8, alpha=0.5, ax=axis)
 
     nx.draw_networkx_edge_labels(g, pos, font_size=16,
                                  edge_labels=edge_labels, ax=axis)
