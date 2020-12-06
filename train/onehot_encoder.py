@@ -360,91 +360,6 @@ def extend_motifs(node_to_motifs, graph_dir):
 
     return node_to_motifs
 
-def build_onehot_graphs(meta_graph_path,
-                 graph_annotations,
-                 interface_dir,
-                 maximal_only=True,
-                 task='ALL'
-                 ):
-    """
-    Extract onehots for each PDB in the meta_graph
-
-    :param meta_graph_path: path to meta graph
-    :param graph_annotations: JSON file containing  { graph : label }
-    :param maximal_only: if True, only keeps largest motif if superset.
-
-    :return X: one hot array of number of PDBs by number of motifs.
-    """
-
-    from sklearn.preprocessing import OneHotEncoder
-
-    # map graph files to dict of motif occurrences
-    # TODO: change interface graphs to be in the same containing folder 
-    #       and use new nomenclature
-    graph_to_motifs = defaultdict(Counter)
-
-    with open(graph_annotations, 'r') as labels:
-        graph_annot_dict = json.load(labels)
-
-    maga_graph = pickle.load(open(meta_graph_path, 'rb'))
-
-    # print('\nmaga_graph attributes: ', dir(maga_graph))
-    meta_nodes = sorted(maga_graph.maga_graph.nodes(data=True),
-                        key=lambda x: len(x[0]),
-                        reverse=True)
-    motif_set = set()
-    for motif, d in tqdm(meta_nodes):
-        # TODO: performance of this function can be optimized
-        # - First turn the frozensets into one big set
-        # - then for each node in the graph loop through motifs and check if it is in there
-        for i, instance in tqdm(enumerate(d['node_set'])):
-            for node_id in instance:
-                # print('node_id:', node_id)
-                # print('reversed_node_map: ', maga_graph.reversed_node_map[node_id])
-                # Node_id are integer ids that map back to nx nodes
-                node = maga_graph.reversed_node_map[node_id]
-                pbid = (node[0])[:4]
-                graphs = os.listdir(interface_dir)
-                for graph_file in graphs:
-                    if pbid not in graph_file: continue
-                    path = os.path.join(interface_dir, graph_file)
-                    g = nx.read_gpickle(path)
-                    if node in g.nodes:
-
-                    # add motif to the graph
-                        if maximal_only:
-                            # make sure larger motif not already counted
-                            for larger in graph_to_motifs[graph_file].keys():
-                                if motif.issubset(larger):
-                                    break
-                            else:
-                                graph_to_motifs[graph_file].update([motif])
-                                motif_set.add(motif)
-                        else:
-                            graph_to_motifs[graph_file].update([motif])
-                            motif_set.add(motif)
-
-    # get one hot
-    hot_map = {motif: i for i, motif in enumerate(sorted(motif_set))}
-    X = np.zeros((len(graph_to_motifs), len(hot_map)))
-    graphs = []
-    for i, (graph, motif_counts) in enumerate(graph_to_motifs.items()):
-        graphs.append(graph)
-        for motif, count in motif_counts.items():
-            X[i][hot_map[motif]] = count
-
-    # encode prediction targets
-    target_labels = []
-    for graph in graphs:
-        label = graph_annot_dict[task][graph]
-        target_labels.append(label)
-
-    target_encode = {label: i for i, label in
-                     enumerate(sorted(list(set(target_labels))))}
-
-    y = [target_encode[label] for label in target_labels]
-
-    return X, y
 
 def kfold(X, y):
 
@@ -475,6 +390,7 @@ def draw_roc(roc_data, save_fig):
                     'ligand': 'Small Molecule',
                     'protein': 'Protein'}
 
+    weights = defaultdict(dict)
     for i, (task, data) in enumerate(roc_data.items()):
         rcurve_not_made = True
         plt.subplot(2, 2, i+1)
@@ -505,6 +421,8 @@ def draw_roc(roc_data, save_fig):
 
             # print scores:
             print(f'{task}, {label}: AUROC = %.3f' % (model_auc))
+            # save coefficients
+            weights[label][task] = model.coef_
 
             # Calculate ROC curve
             model_fpr, model_tpr, _ = roc_curve(y_test, model_probs)
@@ -527,6 +445,29 @@ def draw_roc(roc_data, save_fig):
     plt.tight_layout()
     plt.savefig(save_fig)
 
+    return weights
+
+def plot_weights(weights, save):
+    """
+    plot a pcolormesh graph
+    """
+
+    tasks = list(weights.keys())
+    x = [i for i in range(len(weights[tasks[0]][0]))]
+    y = [i for i in range(len(tasks))]
+    print(list(enumerate(tasks)))
+
+    Z = np.array([w[0] for w in weights.values()])
+
+    plt.clf()
+    print(Z.shape)
+    plt.pcolormesh(x, y, Z, shading='auto',
+                    cmap = 'Blues',
+                    label='motif importance')
+
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(save)
 
 def compute_accuracy(X, y):
     """
@@ -586,6 +527,8 @@ def main():
     parser.add_argument('-s', '--motif_size',
                         help = 'Fix motifs to only use those of fixed size for vernal motifs',
                         type = int)
+    parser.add_argument('-w', '--plot_weights',
+                        help = 'save file for plot of feature importance')
     args = parser.parse_args()
 
     tasks = args.tasks.split()
@@ -634,10 +577,13 @@ def main():
                # accuracy[name][task] = kfold(X, y)
                 roc_data[task].append((X, y, name))
 
-    draw_roc(roc_data, args.fig_save)
+    weights = draw_roc(roc_data, args.fig_save)
+
+    if args.plot_weights:
+        plot_weights(weights['vernal'], args.plot_weights)
+
 
     # print(accuracy)
-
     if args.accuracy_output:
         with open(args.accuracy_output, 'w') as f:
             writer = csv.writer(f, delimiter='\t')
