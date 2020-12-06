@@ -191,6 +191,26 @@ def get_motifs_metagraph(meta_graph_path,
     # print(motif_set)
     return node_to_motifs, motif_set
 
+
+def parse_json_node(node):
+    """
+    parse a node from a JSON (made of lists) into a normal node (of tuples)
+    """
+
+    node[1] = tuple(node[1])
+    node = tuple(node)
+
+    return node
+
+def node_to_json(node):
+    """
+    change the tuples to list for a node to serialise to json
+    """
+    node[1] = list(node[1])
+    node = list(node)
+
+    return node
+
 def get_motifs_json(json_dict, native_dir):
     """
     sCreate mapping of nodes to motifs from json dict
@@ -208,9 +228,7 @@ def get_motifs_json(json_dict, native_dir):
     for motif, instances in json_dict.items():
         for instance in instances:
             for node_dict in instance:
-                node = node_dict['node']
-                node[1] = tuple(node[1])
-                node = tuple(node)
+                node = parse_json_node(node_dict['node'])
 
                 graph = node[0]
                 if graph not in graphs:
@@ -269,6 +287,51 @@ def build_onehot_nodes(node_labels, native_dir,
 
     return X, y
 
+def get_all_neighbours(graph_dir,
+                        load_from_cache=True,
+                        depth = 1):
+    """
+    get a list of all neighbours of all nodes, return the result and JSON serialise
+    it into a cache
+
+    :param graph_dir: directory of native graphs
+    :return neighbours: dictionary list of neighbours for every node
+    """
+
+
+    # caching
+    onehot_cache = os.path.join(script_dir, '..', 'data', '.onehot_cache')
+
+    if not os.path.exists(onehot_cache):
+        os.mkdir(onehot_cache)
+
+    neighbours_file = os.path.join(onehot_cache,'neighbours_depth'+ str(depth) + '.json')
+
+    if os.path.exists(neighbours_file)\
+    and load_from_cache:
+        print('Loading neighbours from cache')
+        with open(neighbours_file, 'r') as f:
+            neighbours = json.load(f)
+    else:
+        print('Finding neighbours for all nodes')
+        neighbours = defaultdict(list)
+        for graph_file in tqdm(os.listdir(graph_dir)):
+            if '.nx' not in graph_file: continue
+            graph_path = os.path.join(graph_dir, graph_file)
+            g = nx.read_gpickle(graph_path)
+            for node in g.nodes:
+                for neighbour in bfs_expand(g, [node], depth = depth):
+                    neighbours[node_to_json(node)].append(node_to_json(neighbour))
+        # save to cache
+
+    # parse JSON nodes to tuples
+    tuple_neighbours = defaultdict(list)
+    for node, neighbour_list in neighbours:
+        for neighbour in neighbour_list:
+            tuple_neighbours[parse_json_node(node)].append(parse_json_node(neighbour))
+
+    return tuple_neighbours
+
 def extend_motifs(node_to_motifs, graph_dir):
     """
     extend motif mapping by collectin motifs from all nodes connected to the given node
@@ -276,11 +339,11 @@ def extend_motifs(node_to_motifs, graph_dir):
 
     nodes = list(node_to_motifs.keys())
 
+    neighbours = get_neighbours(graph_dir)
+
     print('extending motifs')
     for node in tqdm(nodes):
-        graph_file = node[0]
-        g = nx.read_gpickle(os.path.join(graph_dir, graph_file))
-        for neighbour in bfs_expand(g, [node], depth=1):
+        for neighbour in neighbours[node]:
             node_to_motifs[node] = node_to_motifs[neighbour] | node_to_motifs[node]
 
     return node_to_motifs
