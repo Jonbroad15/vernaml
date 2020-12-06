@@ -218,7 +218,7 @@ def parse_str_node(node):
     node = node.translate({ord(i): None for i in '()\''})
 
     node = node.split(',')
-    new_node = (node[0], (node[1].strip(), int(node[2])))
+    new_node = (node[0], (node[1], int(node[2])))
 
     return new_node
 
@@ -352,8 +352,6 @@ def extend_motifs(node_to_motifs, graph_dir):
     nodes = list(node_to_motifs.keys())
 
     neighbours = get_neighbours(graph_dir)
-
-    print(list(neighbours.keys())[:3])
 
     print('extending motifs')
     for node in tqdm(nodes):
