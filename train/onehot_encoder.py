@@ -206,10 +206,21 @@ def node_to_json(node):
     """
     change the tuples to list for a node to serialise to json
     """
-    node[1] = list(node[1])
-    node = list(node)
+    new_node = [node[0], list(node[1])]
 
-    return node
+    return new_node
+
+def parse_str_node(node):
+    """
+    parse a node from a string to a tuple
+    """
+    # node: (xxxx.nx, (C, N))
+    node = node.translate({ord(i): None for i in '()\''})
+
+    node = node.split(',')
+    new_node = (node[0], (node[1], int(node[2])))
+
+    return new_node
 
 def get_motifs_json(json_dict, native_dir):
     """
@@ -244,7 +255,7 @@ def build_onehot_nodes(node_labels, native_dir,
                                  json_motifs=None,
                                  load_from_cache=True,
                                  motif_size = None,
-                                 extend_motifs = False,
+                                 extend = False,
                                  maximal_only=True):
     """
     Extracts one_hots for each node in the set interface_dir
@@ -268,7 +279,7 @@ def build_onehot_nodes(node_labels, native_dir,
     else:
         raise Exception("Build_onehot_nodes needs a metagraph or json_motifs")
 
-    if extend_motifs: node_to_motifs = extend_motifs(node_to_motifs, native_dir)
+    if extend: node_to_motifs = extend_motifs(node_to_motifs, native_dir)
 
     print('Building onehot')
     # get one hot
@@ -287,7 +298,7 @@ def build_onehot_nodes(node_labels, native_dir,
 
     return X, y
 
-def get_all_neighbours(graph_dir,
+def get_neighbours(graph_dir,
                         load_from_cache=True,
                         depth = 1):
     """
@@ -321,14 +332,15 @@ def get_all_neighbours(graph_dir,
             g = nx.read_gpickle(graph_path)
             for node in g.nodes:
                 for neighbour in bfs_expand(g, [node], depth = depth):
-                    neighbours[node_to_json(node)].append(node_to_json(neighbour))
+                    neighbours[str(node)].append(str(neighbour))
         # save to cache
-
+        with open(neighbours_file, 'w') as f:
+            json.dump(neighbours, f, indent=3)
     # parse JSON nodes to tuples
     tuple_neighbours = defaultdict(list)
-    for node, neighbour_list in neighbours:
+    for node, neighbour_list in neighbours.items():
         for neighbour in neighbour_list:
-            tuple_neighbours[parse_json_node(node)].append(parse_json_node(neighbour))
+            tuple_neighbours[parse_str_node(node)].append(parse_str_node(neighbour))
 
     return tuple_neighbours
 
@@ -592,11 +604,22 @@ def main():
             X, y = build_onehot_nodes(labels, args.native_dir,
                                         load_from_cache=args.c,
                                         meta_graph_path=args.metagraph,
-                                        motif_size = args.motif_size,
-                                        extend_motifs = args.extend_motifs)
+                                        extend = args.extend_motifs)
             # accuracy['vernal'][task] = kfold(X, y)
-            args.c = True
             roc_data[task].append((X, y, name))
+
+            if args.motif_size:
+                name = 'vernal-' + str(args.motif_size) + 'mers'
+                print('Motif Set:', name)
+                X, y = build_onehot_nodes(labels, args.native_dir,
+                                            load_from_cache=args.c,
+                                            meta_graph_path=args.metagraph,
+                                            motif_size = args.motif_size,
+                                            extend = args.extend_motifs)
+                # accuracy['vernal'][task] = kfold(X, y)
+                roc_data[task].append((X, y, name))
+
+            args.c = True
 
         if args.json_motifs:
             with open(args.json_motifs, 'r') as f:
@@ -607,7 +630,7 @@ def main():
                                             load_from_cache=args.c,
                                             json_motifs=motif_set,
                                             motif_size = args.motif_size,
-                                            extend_motifs = args.extend_motifs)
+                                            extend = args.extend_motifs)
                # accuracy[name][task] = kfold(X, y)
                 roc_data[task].append((X, y, name))
 
