@@ -452,7 +452,13 @@ def plot_weights(weights, save):
     plot a pcolormesh graph
     """
 
+
     tasks = list(weights.keys())
+
+    for task in tasks:
+        top_weights = sorted([i for i in weights[task][0]])[:10]
+        print(task, top_weights)
+
     x = [i for i in range(len(weights[tasks[0]][0]))]
     y = [i for i in range(len(tasks))]
     print(list(enumerate(tasks)))
@@ -462,7 +468,7 @@ def plot_weights(weights, save):
     plt.clf()
     print(Z.shape)
     plt.pcolormesh(x, y, Z, shading='auto',
-                    cmap = 'Blues',
+                    cmap = 'GnBu',
                     label='motif importance')
 
     plt.legend()
