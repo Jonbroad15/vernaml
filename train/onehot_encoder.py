@@ -103,7 +103,8 @@ def get_binary_labels(graph_dir):
 
 def get_motifs_metagraph(meta_graph_path,
                         maximal_only=True,
-                        load_from_cache = True):
+                        load_from_cache = True,
+                        motif_size = None):
     """
     Parse metagraph to get a dictionary of
                     keys = nodes
@@ -122,8 +123,15 @@ def get_motifs_metagraph(meta_graph_path,
     if not os.path.exists(onehot_cache):
         os.mkdir(onehot_cache)
 
-    node_to_motifs_file = os.path.join(onehot_cache, 'node_to_motifs.p')
-    motif_set_file = os.path.join(onehot_cache, 'motif_set.p')
+    if motif_size:
+        node_to_motifs_file = os.path.join(onehot_cache,
+                                        'node_to_motifs_size' + str(motif_size) + '.p')
+        motif_set_file = os.path.join(onehot_cache,
+                                     'motif_set_size' + str(motif_size) + '.p')
+    else:
+        node_to_motifs_file = os.path.join(onehot_cache, 'node_to_motifs.p')
+        motif_set_file = os.path.join(onehot_cache, 'motif_set.p')
+
     if os.path.exists(node_to_motifs_file)\
     and os.path.exists(motif_set_file) \
     and load_from_cache:
@@ -144,6 +152,8 @@ def get_motifs_metagraph(meta_graph_path,
                             reverse=True)
         motif_set = set()
         for motif, d in tqdm(meta_nodes):
+            if motif_size:
+                if len(motif) != motif_size: continue
             try:
                 tuples = enumerate(d['node_set'])
             except KeyError:
@@ -183,7 +193,7 @@ def get_motifs_metagraph(meta_graph_path,
 
 def get_motifs_json(json_dict, native_dir):
     """
-    Create mapping of nodes to motifs from json dict
+    sCreate mapping of nodes to motifs from json dict
 
     :param json_file: path to json file containing motifs
     :return node_to_motifs: dictionary mapping nodes to motifs
@@ -215,6 +225,8 @@ def build_onehot_nodes(node_labels, native_dir,
                                  meta_graph_path=None,
                                  json_motifs=None,
                                  load_from_cache=True,
+                                 motif_size = None,
+                                 extend_motifs = False,
                                  maximal_only=True):
     """
     Extracts one_hots for each node in the set interface_dir
@@ -231,13 +243,14 @@ def build_onehot_nodes(node_labels, native_dir,
 
     if meta_graph_path:
         node_to_motifs, motif_set = get_motifs_metagraph(meta_graph_path,
-                                                        load_from_cache=load_from_cache)
+                                                        load_from_cache=load_from_cache,
+                                                        motif_size = motif_size)
     elif json_motifs:
         node_to_motifs, motif_set = get_motifs_json(json_motifs, native_dir)
     else:
         raise Exception("Build_onehot_nodes needs a metagraph or json_motifs")
 
-    node_to_motifs = extend_motifs(node_to_motifs, native_dir)
+    if extend_motifs: node_to_motifs = extend_motifs(node_to_motifs, native_dir)
 
     print('Building onehot')
     # get one hot
@@ -469,7 +482,7 @@ def main():
     parser.add_argument('-G', '--graph_dir',
                         help='directory containing graphs to predict on',
                         default=os.path.join(script_dir, '..', 'data', 'graphs',
-                                            'interfaces_cutoff5'))
+                                            'interfaces_cutoff10'))
     parser.add_argument('-N', '--native_dir',
                         help='directory containing native graphs',
                         default = os.path.join(script_dir, '..', 'data', 'graphs', 'native'))
@@ -492,6 +505,12 @@ def main():
     parser.add_argument('-f', '--fig_save',
                         help='output file for roc plots',
                         default = os.path.join(script_dir, '..', 'images', 'rocs'))
+    parser.add_argument('-e', '--extend_motifs',
+                        help='flag to extend motifs with node hops',
+                        action='store_true')
+    parser.add_argument('-s', '--motif_size',
+                        help = 'Fix motifs to only use those of fixed size for vernal motifs',
+                        type = int)
     args = parser.parse_args()
 
     tasks = args.tasks.split()
@@ -509,9 +528,12 @@ def main():
             print('Motif Set:', name)
             X, y = build_onehot_nodes(labels, args.native_dir,
                                         load_from_cache=args.c,
-                                        meta_graph_path=args.metagraph)
+                                        meta_graph_path=args.metagraph,
+                                        motif_size = args.motif_size,
+                                        extend_motifs = args.extend_motifs)
             # accuracy['vernal'][task] = kfold(X, y)
-            roc_data.append((X, y, name))
+            args.c = True
+            roc_data[task].append((X, y, name))
 
         if args.json_motifs:
             with open(args.json_motifs, 'r') as f:
@@ -520,7 +542,9 @@ def main():
                 print('Motif Set: ', name)
                 X, y = build_onehot_nodes(labels, args.native_dir,
                                             load_from_cache=args.c,
-                                            json_motifs=motif_set)
+                                            json_motifs=motif_set,
+                                            motif_size = args.motif_size,
+                                            extend_motifs = args.extend_motifs)
                # accuracy[name][task] = kfold(X, y)
                 roc_data[task].append((X, y, name))
 
