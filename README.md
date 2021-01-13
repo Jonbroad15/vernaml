@@ -6,7 +6,7 @@ Repository for my comp402 project
 **Coordinator:** Yue Li
 
 # Project Goals
-The overall goal of this project will be to combine, tune and expand upon these programs to provide a tool which is interpretable for biologists. Currently RNAMigos predicts small molecule binding partners however I would like to extend this to predict proteins and functional annotations. This task will use motif fingerprints from VeRNAl and data from PDB, Rfam and GO. We will rely on interpretable prediction models at first (ie. decisions trees) to determine motif importance. The overall result will be cleaned and curated data sources; tuned parameters for VeRNAl motif extraction; trained classification models for RNA-{protein/rna/small molecule/function} prediction and novel functional insights on conserved RNA structural patterns.
+The overall goal of this project is to provide a tool interpretable to biologists to predict RNA binding partners and function. Currently RNAMigos predicts small molecule binding partners however I would like to extend this to predict proteins and functional annotations. This task will use motif fingerprints from VeRNAl and data from PDB, Rfam and GO. We will rely on interpretable prediction models at first (ie. decisions trees) to determine motif importance. The overall result will be cleaned and curated data sources; tuned parameters for VeRNAl motif extraction; trained classification models for RNA-{protein/rna/small molecule/function} prediction and novel functional insights on conserved RNA structural patterns.
 
 ## Associated Repositories:
 [VeRNAl](https://github.com/cgoliver/vernal)
@@ -17,7 +17,7 @@ The overall goal of this project will be to combine, tune and expand upon these 
 The training data for VernaML consists of netowrkx graphs which are sliced into portions containing RNA interfaces and their respective complement counterparts. Graphs are Augmented Base Pairing Networks. Here is an example of one overlayed on a PDB structure. Backbones are in white, canonical Watson-Crick bonds are in green and non-canonical bonds are in red.
 
 
-![RNA motif binding to CMC ligand](images/1et4.png)
+![RNA motif binding to CMC ligand](images/1qvg_graphandchimera.png)
 
 To generate this data:
 1. Retrieve a representative set of RCSB PDB structures.
