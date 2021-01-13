@@ -456,7 +456,7 @@ def plot_weights(weights, save):
     tasks = list(weights.keys())
 
     for task in tasks:
-        top_weights = sorted([i for i in weights[task][0]])[:10]
+        top_weights = sorted([i for i in weights[task][0]], reverse=True)[:50]
         print(task, top_weights)
 
     x = [i for i in range(len(weights[tasks[0]][0]))]
