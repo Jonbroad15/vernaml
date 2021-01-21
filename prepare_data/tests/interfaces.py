@@ -8,6 +8,8 @@ rnadir = os.path.join(scriptdir, '..', '..',
                         'data', 'structures')
 test_structures_dir = os.path.join(scriptdir, '..', '..',
                         'data', 'test_structures')
+data_dir = os.path.join(scriptdir, '..', '..',
+                        'data')
 ligands_file = os.path.join(scriptdir, '..', '..',
                                 'data', 'ligand_list.txt')
 ligands = []
@@ -19,6 +21,11 @@ parser = MMCIFParser(QUIET=True)
 
 class InterfacesTestCase(unittest.TestCase):
 
+    def test_get_repr_set(self):
+        bgsu_file = os.path.join(data_dir, 'nrlist_3.145_4.0A.csv')
+
+        repr_set = get_repr_set(bgsu_file)
+        print(repr_set)
 
     def test_get_interfaces_none(self):
 

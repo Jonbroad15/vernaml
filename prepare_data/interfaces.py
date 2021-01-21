@@ -2,9 +2,32 @@ import os
 import numpy as np
 from Bio.PDB import *
 from Bio.PDB.MMCIF2Dict import MMCIF2Dict
-
+import csv
 
 scriptdir = os.path.dirname(os.path.realpath(__file__))
+
+def get_repr_set(input_file, quiet=False):
+    """
+    load a csv of from rna.bgsu.edu of representative set
+    get a list of tuples:
+        (structure, model, chain)
+    :param input_file: path to csv file
+    :param quiet: set to true to turn off warnings
+    :return repr_set: list of equivalence class RNAs
+    """
+    repr_set = []
+    with open(input_file, 'r') as f:
+        reader = csv.reader(f)
+        for row in reader:
+            try:
+                for item in row[1].split('+'):
+                    for structure, model, chain in item.split('|'):
+                        repr_set.append((structure, model, chain))
+            except csv.Error as e:
+                if not quiet:
+                    print(f'Warning error {e} found when trying to parse row: \n {row}')
+
+    return repr_set
 
 def find_ligand_annotations(cif_path, ligands):
     """
@@ -79,7 +102,7 @@ def get_offset_pos(res):
 
 def get_interfaces(cif_path, ligands, cutoff=10, skipWater=True):
     """Obtain RNA interface residues within a single structure of polymers. Uses
-   KDTree data structure for vector search, by the biopython NeighborSearch module.
+    KDTree data structure for vector search, by the biopython NeighborSearch module.
 
     Args:
         `cif_path (str)`: Path to structure to analyze (MMCif format)
