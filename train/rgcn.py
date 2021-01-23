@@ -54,39 +54,40 @@ class Embedder(nn.Module):
         layers.append(h2o)
         return layers
 
-        @property
-        def current_device(self):
-            """
-            return: current device this model is on
-            """
-            return next(self.parameters()).device
+    @property
+    def current_device(self):
+        """
+        return: current device this model is on
+        """
+        return next(self.parameters()).device
 
-        def build_hidden_layer(self, in_dim, out_dim):
+    def build_hidden_layer(self, in_dim, out_dim):
+        return RelGraphConv(in_dim, out_dim, self.num_rels,
+                            num_bases=self.num_bases,
+                            activation=F.relu,
+                            self_loop=self.self_loop)
+
+    # No activation for the last layer
+    # TODO: add a softmax layer to squish a vector between 0 and 1
+    def build_output_layer(self, in_dim, out_dim, conv=False):
+        out_dim = 1
+        if self.conv_output:
             return RelGraphConv(in_dim, out_dim, self.num_rels,
-                                num_bases=self.num_bases,
-                                activation=F.relu,
-                                self_loop=self.self_loop)
+                                num_bases = self.num_bases,
+                                self_loop = self.self_loop,
+                                activation=None)
+        else:
+            return nn.Linear(in_dim, out_dim)
 
-        # No activation for the last layer
-        def build_output_layer(self, in_dim, out_dim, conv=False):
-            if self.conv_output:
-                return RelGraphConv(in_dim, out_dim, self.num_rels,
-                                    num_bases = self.num_bases,
-                                    self_loop = self.self_loop,
-                                    activation=None)
+    def forward(self, g):
+        h = torch.ones(len(g.nodes())).view(-1, 1).to(self.current_device)
+        for i, layer in enumerate(self.layers):
+            if not self.conv_output and (i == len(self.layers) - 1):
+                h = layer(h)
             else:
-                return nn.Linear(in_dim, out_dim)
-
-        # TODO: Edit the forward function to fit my edata
-        def forward(self, g):
-            h = torch.ones(len(g.nodes())).view(-1, 1).to(self.current_device)
-            for i, layer in enumerate(self.layers):
-                if not self.conv_output and (i == len(self.layers) - 1):
-                    h = layer(h)
-                else:
-                    h = layer(g, h, g.edata['one_hot'])
-            g.ndata['h'] = h
-            return g.ndata['h']
+                h = layer(g, h, g.edata['one_hot'])
+        g.ndata['h'] = h
+        return g.ndata['h']
 
 ########################################################################
 # Define full R-GCN Model
@@ -100,7 +101,7 @@ class Model(nn.Module):
                 conv_output = True,
                 self_loop = False,
                 hard_embed = False,
-                similarity = True,
+                similarity = False,
                 normalize = False,
                 weighted = False,
                 verbose = True):
