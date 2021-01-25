@@ -60,20 +60,22 @@ def test(model, test_loader, device):
     model.eval()
     recons_loss_tot = 0
     test_size = len(test_loader)
-    for batch_idx, (graph, K, inds, graph_sizes) in enumerate(test_loader):
+    for batch_idx, (graph, _, inds, graph_sizes) in enumerate(test_loader):
         # Get data on the devices
-        K = K.to(device)
         graph = send_graph_to_device(graph, device)
 
         # Do the computations for the forward pass
         with torch.no_grad():
             out = model(graph)
 
-            reconstruction_loss = model.rec_loss(embeddings=out,
-                                                 target_K=K,
-                                                 graph=graph)
+            #TODO: get labels from graph
+            label = graph.ndata['interface']
+            label = label[0]
 
-            recons_loss_tot += reconstruction_loss
+            criterion = torch.nn.CrossEntropyLoss()
+            loss = criterion(out, label)
+
+            recons_loss_tot += loss
     return recons_loss_tot / test_size
 
 
@@ -105,18 +107,19 @@ def train_model(model, optimizer, train_loader, test_loader, save_path,
         running_loss = 0.0
         num_batches = len(train_loader)
 
-        #TODO: get labels from graph
-        for batch_idx, (graph, K, inds, labels, graph_sizes) in enumerate(train_loader):
-            batch_size = len(K)
+        for batch_idx, (graph, _, inds, graph_sizes) in enumerate(train_loader):
+
+            label = graph.ndata['interface']
 
             # Get data on the devices
-            K = K.to(device)
             graph = send_graph_to_device(graph, device)
 
             # Do the computations for the forward pass
             out = model(graph)
-
-            loss = F.binary_cross_entropy(out, label)
+            # print('out:\n', out, out.shape)
+            # print('label:\n', label, label.shape)
+            criterion = torch.nn.CrossEntropyLoss()
+            loss = criterion(out, label)
 
             # Backward
             loss.backward()

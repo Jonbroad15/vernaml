@@ -2,13 +2,29 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from dgl.nn.pytorch.conv import RelGraphConv
-
+from functools import partial
 import numpy as np
 import os
 import sys
 
 script_dir = os.path.dirname(os.path.realpath(__file__))
 sys.path.append(os.path.join(script_dir, '..'))
+
+def model_from_hparams(hparams, verbose=True):
+    """
+    Just interfacing to create a model directly from an hparam file
+    :param hparams:
+    :return:
+    """
+    num_rels = hparams.get('argparse', 'num_edge_types')
+    model = Model(dims=hparams.get('argparse', 'embedding_dims'),
+                  self_loop=hparams.get('argparse', 'self_loop'),
+                  conv_output=hparams.get('argparse', 'conv_output'),
+                  num_rels=num_rels,
+                  num_bases=-1,
+                  similarity=hparams.get('argparse', 'similarity'),
+                  verbose=verbose)
+    return model
 
 class Embedder(nn.Module):
 
@@ -70,14 +86,14 @@ class Embedder(nn.Module):
     # No activation for the last layer
     # TODO: add a softmax layer to squish a vector between 0 and 1
     def build_output_layer(self, in_dim, out_dim, conv=False):
-        out_dim = 1
         if self.conv_output:
             return RelGraphConv(in_dim, out_dim, self.num_rels,
                                 num_bases = self.num_bases,
                                 self_loop = self.self_loop,
-                                activation=None)
+                                activation=partial(F.softmax, dim=1))
         else:
             return nn.Linear(in_dim, out_dim)
+
 
     def forward(self, g):
         h = torch.ones(len(g.nodes())).view(-1, 1).to(self.current_device)
@@ -149,7 +165,7 @@ class Model(nn.Module):
         """
         :return: current device this model is on
         """
-        return next(self.paramters()).device
+        return next(self.parameters()).device
 
     # Below are loss computation function related to this model
     @staticmethod

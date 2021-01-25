@@ -35,7 +35,7 @@ if function == 'train':
     parser = argparse.ArgumentParser()
     # General arguments
     parser.add_argument("-ini", "--ini", default=None, help="name of the additional .ini to use")
-    parser.add_argument("-da", "--annotated_data", default='rna_graphs_nr')
+    parser.add_argument("-da", "--annotated_data", default='all')
     parser.add_argument("-bs", "--batch_size", type=int, default=2, help="choose the batch size")
     parser.add_argument("-nw", "--workers", type=int, default=0, help="Number of workers to load data")
     parser.add_argument("-wt", "--wall_time", type=int, default=None, help="Max time to run the model")
@@ -68,7 +68,7 @@ if function == 'train':
                         help="Add a self loop to graphs for convolution. Default: False",
                         action='store_true'),
     parser.add_argument('-ed', '--embedding_dims', nargs='+', type=int, help='Dimensions for embeddings.',
-                        default=[32, 64])
+                        default=[32, 16, 2])
     parser.add_argument("--weight", help="Whether to weight the K-matrix for NC", action='store_true')
     parser.add_argument("--normalize", help="Whether to use cosine instead of dot product", action='store_true')
     parser.add_argument('-co', '--conv_output',
@@ -90,9 +90,9 @@ if function == 'train':
     import os
 
     # Homemade modules
-    from train_embeddings.loader import Loader, loader_from_hparams
-    from train_embeddings.model import Model, model_from_hparams
-    from train_embeddings.learn import train_model
+    from train.loader import Loader, loader_from_hparams
+    from train.model import Model, model_from_hparams
+    from train.learn import train_model
     from tools.node_sim import SimFunctionNode, simfunc_from_hparams
     from tools.learning_utils import mkdirs_learning, ConfParser
 
@@ -109,7 +109,7 @@ if function == 'train':
     device = torch.device(f'cuda:{args.device}' if torch.cuda.is_available() else 'cpu')
 
     # Dataloader creation
-    annotated_path = os.path.join(script_dir, '../data/annotated', args.annotated_data)
+    annotated_path = os.path.join(script_dir, '../data/graphs/interfaces_cutoff10', args.annotated_data)
     loader = loader_from_hparams(annotated_path=annotated_path, hparams=hparams)
     hparams.add_value('argparse', 'num_edge_types', loader.num_edge_types)
     train_loader, test_loader, all_loader = loader.get_data()

@@ -17,19 +17,31 @@ from torch.utils.data import Dataset, DataLoader, Subset
 from tools.node_sim import k_block_list, simfunc_from_hparams, EDGE_MAP
 from tools.graph_utils import fetch_graph
 
+def get_labels(g):
+
+    labels = {}
+    for node in g.nodes:
+        for interaction in ['rna', 'protein', 'ion', 'ligand']:
+            if g.nodes[node][interaction] is not None:
+                # Interface
+                labels[node] = 1
+                break
+        else:
+            labels[node] = 0
+
+    return labels
 
 class V1(Dataset):
     def __init__(self,
                  edge_map,
                  node_simfunc,
-                 annotated_path='../data/annotated/samples',
+                 annotated_path='../data/graphs/interfaces_cutoff10/',
                  depth=3,
                  debug=False,
                  shuffled=False,
                  ):
 
         self.path = annotated_path
-        # self.all_graphs = np.array(sorted(os.listdir(annotated_path)), dtype=np.string_)
         self.all_graphs = sorted(os.listdir(annotated_path))
 
         self.node_simfunc = node_simfunc
@@ -63,31 +75,21 @@ class V1(Dataset):
         graph = nx.to_undirected(graph)
         one_hot = {edge: torch.tensor(self.edge_map[label]) for edge, label in
                    (nx.get_edge_attributes(graph, 'label')).items()}
-
+        interface = get_labels(graph)
+        nx.set_node_attributes(graph, name='interface', values = interface)
         nx.set_edge_attributes(graph, name='one_hot', values=one_hot)
+
         g_dgl = dgl.DGLGraph()
         #TODO: tell the function to bring the node attributes
-        g_dgl.from_networkx(nx_graph=graph, edge_attrs=['one_hot'])
+        g_dgl.from_networkx(nx_graph=graph, edge_attrs=['one_hot'], node_attrs=['interface'])
 
-        labels = torch.tensor(get_labels(graph))
 
         if self.node_simfunc is not None:
             ring = data['rings'][self.level]
-            return g_dgl, ring, [idx], labels
+            return g_dgl, ring, [idx]
         else:
-            return g_dgl, 0, [idx], labels
+            return g_dgl, 0, [idx]
 
-    def get_labels(graph):
-
-        labels = []
-        for node in g.nodes:
-            for interaction in ['rna', 'protein', 'ion', 'ligand']:
-                if g.nodes[node][interaction] is not None:
-                    # Interface
-                    labels.append(1)
-                    break
-            else:
-                labels.append(0)
 
 
 
@@ -119,7 +121,7 @@ def collate_wrapper(node_simfunc):
 
 class Loader():
     def __init__(self,
-                 annotated_path='data/annotated/samples/',
+                 annotated_path='data/graphs/interfaces_cutoff10',
                  batch_size=5,
                  num_workers=20,
                  debug=False,
