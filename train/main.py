@@ -68,7 +68,7 @@ if function == 'train':
                         help="Add a self loop to graphs for convolution. Default: False",
                         action='store_true'),
     parser.add_argument('-ed', '--embedding_dims', nargs='+', type=int, help='Dimensions for embeddings.',
-                        default=[32, 16, 2])
+                        default=[16, 1])
     parser.add_argument("--weight", help="Whether to weight the K-matrix for NC", action='store_true')
     parser.add_argument("--normalize", help="Whether to use cosine instead of dot product", action='store_true')
     parser.add_argument('-co', '--conv_output',

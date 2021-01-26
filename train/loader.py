@@ -64,14 +64,16 @@ class V1(Dataset):
     def __len__(self):
         return len(self.all_graphs)
 
-    #TODO: get node attributes
     def __getitem__(self, idx):
         g_path = os.path.join(self.path, self.all_graphs[idx])
         if g_path.endswith('.p'):
             data = pickle.load(open(g_path, 'rb'))
             graph = data['graph']
         else:
-            graph = nx.read_gpickle(g_path)
+            try:
+                graph = nx.read_gpickle(g_path)
+            except:
+                print("ERROR could not read graph file:\n", g_path)
         graph = nx.to_undirected(graph)
         one_hot = {edge: torch.tensor(self.edge_map[label]) for edge, label in
                    (nx.get_edge_attributes(graph, 'label')).items()}
@@ -80,7 +82,6 @@ class V1(Dataset):
         nx.set_edge_attributes(graph, name='one_hot', values=one_hot)
 
         g_dgl = dgl.DGLGraph()
-        #TODO: tell the function to bring the node attributes
         g_dgl.from_networkx(nx_graph=graph, edge_attrs=['one_hot'], node_attrs=['interface'])
 
 

@@ -3,6 +3,7 @@ import sys
 import os
 
 import numpy as np
+import torch.nn as nn
 import torch
 import torch.nn.functional as F
 import dgl
@@ -70,7 +71,6 @@ def test(model, test_loader, device):
 
             #TODO: get labels from graph
             label = graph.ndata['interface']
-            label = label[0]
 
             criterion = torch.nn.CrossEntropyLoss()
             loss = criterion(out, label)
@@ -109,17 +109,18 @@ def train_model(model, optimizer, train_loader, test_loader, save_path,
 
         for batch_idx, (graph, _, inds, graph_sizes) in enumerate(train_loader):
 
-            label = graph.ndata['interface']
-
+            label = graph.ndata['interface'].to(torch.float32)
             # Get data on the devices
             graph = send_graph_to_device(graph, device)
 
             # Do the computations for the forward pass
             out = model(graph)
+            m = nn.Softmax()
+            out = m(out)
             # print('out:\n', out, out.shape)
             # print('label:\n', label, label.shape)
             criterion = torch.nn.CrossEntropyLoss()
-            loss = criterion(out, label)
+            loss = F.binary_cross_entropy(out, label)
 
             # Backward
             loss.backward()

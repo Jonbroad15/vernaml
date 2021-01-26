@@ -86,13 +86,10 @@ class Embedder(nn.Module):
     # No activation for the last layer
     # TODO: add a softmax layer to squish a vector between 0 and 1
     def build_output_layer(self, in_dim, out_dim, conv=False):
-        if self.conv_output:
-            return RelGraphConv(in_dim, out_dim, self.num_rels,
-                                num_bases = self.num_bases,
-                                self_loop = self.self_loop,
-                                activation=partial(F.softmax, dim=1))
-        else:
-            return nn.Linear(in_dim, out_dim)
+        return RelGraphConv(in_dim, out_dim, self.num_rels,
+                            num_bases = self.num_bases,
+                            self_loop = self.self_loop,
+                            activation=None)
 
 
     def forward(self, g):
