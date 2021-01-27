@@ -19,10 +19,8 @@ def model_from_hparams(hparams, verbose=True):
     num_rels = hparams.get('argparse', 'num_edge_types')
     model = Model(dims=hparams.get('argparse', 'embedding_dims'),
                   self_loop=hparams.get('argparse', 'self_loop'),
-                  conv_output=hparams.get('argparse', 'conv_output'),
                   num_rels=num_rels,
                   num_bases=-1,
-                  similarity=hparams.get('argparse', 'similarity'),
                   verbose=verbose)
     return model
 
@@ -32,14 +30,12 @@ class Embedder(nn.Module):
                     dims,
                     num_rels,
                     num_bases = -1,
-                    conv_output = False,
                     self_loop = False,
                     verbose = True):
         super(Embedder, self).__init__()
         self.dims = dims
         self.num_rels = num_rels
         self.num_bases = num_bases
-        self.conv_output = conv_output
         self.self_loop = self_loop
         self.verbose = verbose
 
@@ -85,20 +81,17 @@ class Embedder(nn.Module):
 
     # No activation for the last layer
     # TODO: add a softmax layer to squish a vector between 0 and 1
-    def build_output_layer(self, in_dim, out_dim, conv=False):
+    def build_output_layer(self, in_dim, out_dim):
         return RelGraphConv(in_dim, out_dim, self.num_rels,
                             num_bases = self.num_bases,
                             self_loop = self.self_loop,
-                            activation=None)
+                            activation=partial(F.softmax, dim=1))
 
 
     def forward(self, g):
         h = torch.ones(len(g.nodes())).view(-1, 1).to(self.current_device)
         for i, layer in enumerate(self.layers):
-            if not self.conv_output and (i == len(self.layers) - 1):
-                h = layer(h)
-            else:
-                h = layer(g, h, g.edata['one_hot'])
+            h = layer(g, h, g.edata['one_hot'])
         g.ndata['h'] = h
         return g.ndata['h']
 
@@ -111,11 +104,7 @@ class Model(nn.Module):
                 dims,
                 num_rels,
                 num_bases = -1,
-                conv_output = True,
                 self_loop = False,
-                hard_embed = False,
-                similarity = False,
-                normalize = False,
                 weighted = False,
                 verbose = True):
         """
@@ -123,7 +112,6 @@ class Model(nn.Module):
         :param dims: the embeddings dimensions, a list of type [128, 128, 32]
         :param num_rels: number of possible edge types
         :param num_bases: technical RGCN option
-        :param similarity: if we want to use cosine similarities instead of distances
 
         """
         super(Model, self).__init__()
@@ -134,8 +122,6 @@ class Model(nn.Module):
         self.num_rels = num_rels
         self.num_bases = num_bases
 
-        self.similarity = similarity
-        self.normalize = normalize
         self.weighted = weighted
         self.self_loop = self_loop
 
@@ -144,17 +130,10 @@ class Model(nn.Module):
                                 num_rels = num_rels,
                                 num_bases = num_bases,
                                 self_loop = self_loop,
-                                conv_output = conv_output,
                                 verbose=verbose)
 
     def forward(self, g):
-        # if hard embed, the embeddings are directly g.ndata['h'] otherwise we compute
         self.embedder(g)
-
-        # if using similarity as supervision, we should normalize the embeddings,
-        # as their norm got unconstrained
-        if self.similarity and self.normalize:
-            g.ndata['h'] = F.normalize(g.ndata['h'], p=2, dim=1)
         return g.ndata['h']
 
     @property
@@ -163,37 +142,6 @@ class Model(nn.Module):
         :return: current device this model is on
         """
         return next(self.parameters()).device
-
-    # Below are loss computation function related to this model
-    @staticmethod
-    def matrix_cosine(a, b, eps=1e-8):
-        """
-        added eps for numerical stability
-        """
-        a_n, b_n = a.norm(dim=1)[:, None], b.norm(dim=1)[:, None]
-        a_norm = a / torch.max(a_n, eps * torch.ones_like(a_n))
-        b_norm = b / torch.max(b_n, eps * torch.ones_like(b_n))
-        sim_mt = torch.mm(a_norm, b_norm.transpose(0, 1))
-        return sim_mt
-
-    @staticmethod
-    def matrix_dist(a , plus_one = False):
-        """
-        Pairwise dist of set of vector of size b
-        returns a matrix of size (a, a)
-        :param a: a torch Tensor of size a, b
-        :param plus_one: if we want to get positive values
-        """
-        if plus_one:
-            return torch.norm(a[:, None] - a, dim=2, p=2) + 1
-        else:
-            return torch.norm(a[:, None] - a, dim = 2, p=2)
-
-    @staticmethod
-    def weighted_MSE(output, target, weight):
-        if weight is None:
-            return torch.nn.MSELoss()(output, target)
-        return torch.mean(weight * (output - target) **2)
 
 
 

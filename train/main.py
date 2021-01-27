@@ -35,7 +35,7 @@ if function == 'train':
     parser = argparse.ArgumentParser()
     # General arguments
     parser.add_argument("-ini", "--ini", default=None, help="name of the additional .ini to use")
-    parser.add_argument("-da", "--annotated_data", default='all')
+    parser.add_argument("-da", "--annotated_data", default='rna')
     parser.add_argument("-bs", "--batch_size", type=int, default=2, help="choose the batch size")
     parser.add_argument("-nw", "--workers", type=int, default=0, help="Number of workers to load data")
     parser.add_argument("-wt", "--wall_time", type=int, default=None, help="Max time to run the model")
@@ -60,7 +60,7 @@ if function == 'train':
                         help='Supported Options: sgd, adam',
                         default="adam")
     parser.add_argument('-lr', '--lr', type=float,
-                        default=0.002)
+                        default=0.01)
     parser.add_argument("-sim", "--similarity", default=True,
                         help="If we want to train reconstruction on distance instead of cosine",
                         action='store_false'),
@@ -68,7 +68,7 @@ if function == 'train':
                         help="Add a self loop to graphs for convolution. Default: False",
                         action='store_true'),
     parser.add_argument('-ed', '--embedding_dims', nargs='+', type=int, help='Dimensions for embeddings.',
-                        default=[16, 1])
+                        default=[32, 16, 2])
     parser.add_argument("--weight", help="Whether to weight the K-matrix for NC", action='store_true')
     parser.add_argument("--normalize", help="Whether to use cosine instead of dot product", action='store_true')
     parser.add_argument('-co', '--conv_output',
