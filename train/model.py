@@ -85,7 +85,7 @@ class Embedder(nn.Module):
         return RelGraphConv(in_dim, out_dim, self.num_rels,
                             num_bases = self.num_bases,
                             self_loop = self.self_loop,
-                            activation=partial(F.softmax, dim=1))
+                            activation=partial(F.softmax, dim=0))
 
 
     def forward(self, g):
