@@ -61,7 +61,7 @@ def test(model, test_loader, device):
     model.eval()
     recons_loss_tot = 0
     test_size = len(test_loader)
-    for batch_idx, (graph, graph_sizes) in enumerate(test_loader):
+    for batch_idx, graph in enumerate(test_loader):
         # Get data on the devices
         graph = send_graph_to_device(graph, device)
 
@@ -106,7 +106,7 @@ def train_model(model, optimizer, train_loader, test_loader, save_path,
         running_loss = 0.0
         num_batches = len(train_loader)
 
-        for batch_idx, (graph, inds, graph_sizes) in enumerate(train_loader):
+        for batch_idx, graph in enumerate(train_loader):
             label = graph.ndata['interface'].to(torch.float32)
             # Get data on the devices
             graph = send_graph_to_device(graph, device)

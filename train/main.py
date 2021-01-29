@@ -33,12 +33,12 @@ def main():
                         help='Supported Options: sgd, adam',
                         default="adam")
     parser.add_argument('-lr', '--lr', type=float,
-                        default=0.01)
-    parser.add_argument("-sl", "--self_loop", default=False,
+                        default=0.002)
+    parser.add_argument("-sl", "--self_loop", default=True,
                         help="Add a self loop to graphs for convolution. Default: False",
                         action='store_true'),
     parser.add_argument('-ed', '--embedding_dims', nargs='+', type=int, help='Dimensions for embeddings.',
-                        default=[32, 16, 1])
+                        default=[64, 32, 1])
     args, _ = parser.parse_known_args()
 
     print(f"OPTIONS USED \n ",

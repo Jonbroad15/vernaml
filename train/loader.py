@@ -17,19 +17,30 @@ from torch.utils.data import Dataset, DataLoader, Subset
 
 EDGE_MAP = {'B53': 0, 'CHH': 1, 'CHS': 2, 'CHW': 3, 'CSH': 2, 'CSS': 4, 'CSW': 5, 'CWH': 3, 'CWS': 5, 'CWW': 6, 'THH': 7, 'THS': 8, 'THW': 9, 'TSH': 8, 'TSS': 10, 'TSW': 11, 'TWH': 9, 'TWS': 11, 'TWW': 12}
 
-def get_labels(g):
+def get_labels(g, mode=True):
 
+    one_count = 0
+    zero_count = 0
     labels = {}
     for node in g.nodes:
         for interaction in ['rna', 'protein', 'ion', 'ligand']:
             if g.nodes[node][interaction] is not None:
                 # Interface
                 labels[node] = 1
+                one_count += 1
                 break
         else:
+            zero_count += 1
             labels[node] = 0
 
-    return labels
+    if mode:
+        if one_count >= zero_count:
+            return {key: 1 for key in labels.keys()}
+        else:
+            return {key: 0 for key in labels.keys()}
+    else:
+        return labels
+
 
 class V1(Dataset):
     def __init__(self,
@@ -69,8 +80,12 @@ class V1(Dataset):
         g_dgl.from_networkx(nx_graph=graph, edge_attrs=['one_hot'], node_attrs=['interface'])
 
 
-        return g_dgl, [idx]
+        return g_dgl
 
+def collate_fn(samples):
+    # The input `samples` is a list of pairs
+    #  (graph, label).
+    return dgl.batch(samples)
 
 class Loader():
     def __init__(self,
@@ -116,17 +131,38 @@ class Loader():
         all_set = Subset(self.dataset, indices)
 
         print(f"training items: ", len(train_set))
+        sample = next(iter(train_set))
+        print(sample)
+        print(type(sample))
+        sample = next(iter(train_set))
+        print(sample)
+        print(type(sample))
+        sample = next(iter(train_set))
+        print(sample)
+        print(type(sample))
 
 
         train_loader = DataLoader(dataset=train_set, shuffle=True, batch_size=self.batch_size,
-                                  num_workers=self.num_workers)
+                                  num_workers=self.num_workers, collate_fn=collate_fn)
         # valid_loader = DataLoader(dataset=valid_set, shuffle=True, batch_size=self.batch_size,
         #                           num_workers=self.num_workers, collate_fn=collate_block)
         test_loader = DataLoader(dataset=test_set, shuffle=True, batch_size=self.batch_size,
-                                 num_workers=self.num_workers)
+                                 num_workers=self.num_workers, collate_fn=collate_fn)
         all_loader = DataLoader(dataset=all_set, shuffle=True, batch_size=self.batch_size,
-                                num_workers=self.num_workers)
+                                num_workers=self.num_workers, collate_fn=collate_fn)
 
+        batch = next(iter(train_loader))
+        print(f"batch len: ", len(batch))
+        print(batch)
+        print(type(batch))
+        batch = next(iter(train_loader))
+        print(f"batch len: ", len(batch))
+        print(batch)
+        print(type(batch))
+        batch = next(iter(train_loader))
+        print(f"batch len: ", len(batch))
+        print(batch)
+        print(type(batch))
         return train_loader, test_loader, all_loader
 
 def loader_from_hparams(graphs_path, hparams):

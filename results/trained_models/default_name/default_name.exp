@@ -8,8 +8,8 @@ timed = False
 num_epochs = 30
 device = 0
 optim = adam
-lr = 0.01
-self_loop = False
-embedding_dims = [32, 16, 1]
+lr = 0.002
+self_loop = True
+embedding_dims = [64, 32, 1]
 num_edge_types = 13
 
