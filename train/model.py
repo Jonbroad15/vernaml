@@ -20,6 +20,7 @@ def model_from_hparams(hparams, verbose=True):
     model = Model(dims=hparams.get('argparse', 'embedding_dims'),
                   self_loop=hparams.get('argparse', 'self_loop'),
                   num_rels=num_rels,
+                  lin_output = hparams.get('argparse', 'lin_output'),
                   num_bases=-1,
                   verbose=verbose)
     return model
@@ -30,6 +31,7 @@ class Embedder(nn.Module):
                     dims,
                     num_rels,
                     num_bases = -1,
+                    lin_output = False,
                     self_loop = False,
                     verbose = True):
         super(Embedder, self).__init__()
@@ -38,6 +40,7 @@ class Embedder(nn.Module):
         self.num_bases = num_bases
         self.self_loop = self_loop
         self.verbose = verbose
+        self.lin_output = lin_output
 
         self.layers = self.build_model()
         if self.verbose:
@@ -82,16 +85,21 @@ class Embedder(nn.Module):
     # No activation for the last layer
     # TODO: add a softmax layer to squish a vector between 0 and 1
     def build_output_layer(self, in_dim, out_dim):
+        if self.lin_output: return nn.Linear(in_dim, out_dim)
+
         return RelGraphConv(in_dim, out_dim, self.num_rels,
                             num_bases = self.num_bases,
-                            self_loop = self.self_loop,
-                            activation=partial(F.softmax, dim=0))
+                            activation=torch.sigmoid)
 
 
     def forward(self, g):
         h = torch.ones(len(g.nodes())).view(-1, 1).to(self.current_device)
         for i, layer in enumerate(self.layers):
-            h = layer(g, h, g.edata['one_hot'])
+            if self.lin_output and (i == len(self.layers) - 1):
+                h = torch.sigmoid(layer(h))
+                h = h.view(-1)
+            else:
+                h = layer(g, h, g.edata['one_hot'])
         g.ndata['h'] = h
         return g.ndata['h']
 
@@ -105,6 +113,7 @@ class Model(nn.Module):
                 num_rels,
                 num_bases = -1,
                 self_loop = False,
+                lin_output = False,
                 weighted = False,
                 verbose = True):
         """
@@ -130,6 +139,7 @@ class Model(nn.Module):
                                 num_rels = num_rels,
                                 num_bases = num_bases,
                                 self_loop = self_loop,
+                                lin_output = lin_output,
                                 verbose=verbose)
 
     def forward(self, g):

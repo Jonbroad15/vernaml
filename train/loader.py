@@ -130,16 +130,6 @@ class Loader():
         test_set = Subset(self.dataset, test_indices)
         all_set = Subset(self.dataset, indices)
 
-        print(f"training items: ", len(train_set))
-        sample = next(iter(train_set))
-        print(sample)
-        print(type(sample))
-        sample = next(iter(train_set))
-        print(sample)
-        print(type(sample))
-        sample = next(iter(train_set))
-        print(sample)
-        print(type(sample))
 
 
         train_loader = DataLoader(dataset=train_set, shuffle=True, batch_size=self.batch_size,
@@ -151,18 +141,6 @@ class Loader():
         all_loader = DataLoader(dataset=all_set, shuffle=True, batch_size=self.batch_size,
                                 num_workers=self.num_workers, collate_fn=collate_fn)
 
-        batch = next(iter(train_loader))
-        print(f"batch len: ", len(batch))
-        print(batch)
-        print(type(batch))
-        batch = next(iter(train_loader))
-        print(f"batch len: ", len(batch))
-        print(batch)
-        print(type(batch))
-        batch = next(iter(train_loader))
-        print(f"batch len: ", len(batch))
-        print(batch)
-        print(type(batch))
         return train_loader, test_loader, all_loader
 
 def loader_from_hparams(graphs_path, hparams):

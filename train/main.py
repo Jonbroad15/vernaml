@@ -34,8 +34,11 @@ def main():
                         default="adam")
     parser.add_argument('-lr', '--lr', type=float,
                         default=0.002)
-    parser.add_argument("-sl", "--self_loop", default=True,
+    parser.add_argument("-sl", "--self_loop", default=False,
                         help="Add a self loop to graphs for convolution. Default: False",
+                        action='store_true'),
+    parser.add_argument("-lo", "--lin_output", default=False,
+                        help="Make last layer linear. Default: False",
                         action='store_true'),
     parser.add_argument('-ed', '--embedding_dims', nargs='+', type=int, help='Dimensions for embeddings.',
                         default=[64, 32, 1])

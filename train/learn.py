@@ -153,7 +153,7 @@ def train_model(model, optimizer, train_loader, test_loader, save_path,
             epochs_from_best = 0
 
             model.cpu()
-            print(">> saving checkpoint")
+            # print(">> saving checkpoint")
             torch.save({
                 'epoch': epoch,
                 'model_state_dict': model.state_dict(),

@@ -1,5 +1,5 @@
 [argparse]
-interaction_type = rna
+interaction_type = practice_n100
 batch_size = 2
 workers = 0
 wall_time = None
@@ -10,6 +10,7 @@ device = 0
 optim = adam
 lr = 0.002
 self_loop = True
-embedding_dims = [64, 32, 1]
+lin_output = True
+embedding_dims = [16, 1]
 num_edge_types = 13
 
