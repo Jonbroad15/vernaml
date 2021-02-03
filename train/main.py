@@ -19,7 +19,7 @@ from tools.learning_utils import mkdirs_learning, ConfParser
 def main():
     parser = argparse.ArgumentParser()
     # General arguments
-    parser.add_argument("-da", "--interaction_type", default='rna')
+    parser.add_argument("-da", "--interaction_type", default='practice_n100')
     parser.add_argument("-bs", "--batch_size", type=int, default=2, help="choose the batch size")
     parser.add_argument("-nw", "--workers", type=int, default=0, help="Number of workers to load data")
     parser.add_argument("-wt", "--wall_time", type=int, default=None, help="Max time to run the model")
