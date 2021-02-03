@@ -41,7 +41,7 @@ def main():
                         help="Make last layer linear. Default: False",
                         action='store_true'),
     parser.add_argument('-ed', '--embedding_dims', nargs='+', type=int, help='Dimensions for embeddings.',
-                        default=[64, 32, 1])
+                        default=[16, 1])
     args, _ = parser.parse_known_args()
 
     print(f"OPTIONS USED \n ",
@@ -57,7 +57,7 @@ def main():
 
     # Dataloader creation
     graphs_path = os.path.join(script_dir,
-                                '../data/graphs/interfaces_cutoff10', args.interaction_type)
+                                '../sampledata/', args.interaction_type)
     loader = loader_from_hparams(graphs_path=graphs_path, hparams=hparams)
     hparams.add_value('argparse', 'num_edge_types', loader.num_edge_types)
     train_loader, test_loader, all_loader = loader.get_data()

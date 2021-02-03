@@ -11,6 +11,6 @@ optim = adam
 lr = 0.002
 self_loop = True
 lin_output = True
-embedding_dims = [16, 1]
+embedding_dims = [64, 32, 1]
 num_edge_types = 13
 
