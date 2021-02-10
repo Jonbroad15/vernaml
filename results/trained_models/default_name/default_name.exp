@@ -5,12 +5,14 @@ workers = 0
 wall_time = None
 name = default_name
 timed = False
-num_epochs = 30
+num_epochs = 100
 device = 0
+use_mode = False
 optim = adam
 lr = 0.002
 self_loop = True
 lin_output = True
-embedding_dims = [64, 32, 1]
+embedding_dims = [16, 1]
+threshold = None
 num_edge_types = 13
 

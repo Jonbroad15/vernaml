@@ -25,7 +25,7 @@ def model_from_hparams(hparams, verbose=True):
                   verbose=verbose)
     return model
 
-class Embedder(nn.Module):
+class Model(nn.Module):
 
     def __init__(   self,
                     dims,
@@ -34,7 +34,7 @@ class Embedder(nn.Module):
                     lin_output = False,
                     self_loop = False,
                     verbose = True):
-        super(Embedder, self).__init__()
+        super(Model, self).__init__()
         self.dims = dims
         self.num_rels = num_rels
         self.num_bases = num_bases
@@ -82,8 +82,6 @@ class Embedder(nn.Module):
                             activation=F.relu,
                             self_loop=self.self_loop)
 
-    # No activation for the last layer
-    # TODO: add a softmax layer to squish a vector between 0 and 1
     def build_output_layer(self, in_dim, out_dim):
         if self.lin_output: return nn.Linear(in_dim, out_dim)
 
@@ -103,55 +101,6 @@ class Embedder(nn.Module):
         g.ndata['h'] = h
         return g.ndata['h']
 
-########################################################################
-# Define full R-GCN Model
-# ~~~~~~~~~~~~~~~~~~~~~~~
-
-class Model(nn.Module):
-    def __init__(self,
-                dims,
-                num_rels,
-                num_bases = -1,
-                self_loop = False,
-                lin_output = False,
-                weighted = False,
-                verbose = True):
-        """
-
-        :param dims: the embeddings dimensions, a list of type [128, 128, 32]
-        :param num_rels: number of possible edge types
-        :param num_bases: technical RGCN option
-
-        """
-        super(Model, self).__init__()
-        self.verbose = verbose
-        self.dims = dims
-        self.dimension_embedding = dims[-1]
-
-        self.num_rels = num_rels
-        self.num_bases = num_bases
-
-        self.weighted = weighted
-        self.self_loop = self_loop
-
-        # create rgcn layers for the embedder
-        self.embedder = Embedder(dims = dims,
-                                num_rels = num_rels,
-                                num_bases = num_bases,
-                                self_loop = self_loop,
-                                lin_output = lin_output,
-                                verbose=verbose)
-
-    def forward(self, g):
-        self.embedder(g)
-        return g.ndata['h']
-
-    @property
-    def current_device(self):
-        """
-        :return: current device this model is on
-        """
-        return next(self.parameters()).device
 
 
 

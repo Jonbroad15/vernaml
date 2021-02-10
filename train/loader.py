@@ -17,19 +17,24 @@ from torch.utils.data import Dataset, DataLoader, Subset
 
 EDGE_MAP = {'B53': 0, 'CHH': 1, 'CHS': 2, 'CHW': 3, 'CSH': 2, 'CSS': 4, 'CSW': 5, 'CWH': 3, 'CWS': 5, 'CWW': 6, 'THH': 7, 'THS': 8, 'THW': 9, 'TSH': 8, 'TSS': 10, 'TSW': 11, 'TWH': 9, 'TWS': 11, 'TWW': 12}
 
-def get_labels(g, mode=True):
+def get_labels(g, mode=False):
 
     one_count = 0
     zero_count = 0
     labels = {}
     for node in g.nodes:
-        for interaction in ['rna', 'protein', 'ion', 'ligand']:
-            if g.nodes[node][interaction] is not None:
-                # Interface
-                labels[node] = 1
-                one_count += 1
-                break
-        else:
+        try:
+            for interaction in ['rna', 'protein', 'ion', 'ligand']:
+                if g.nodes[node][interaction] is not None:
+                    # Interface
+                    labels[node] = 1
+                    one_count += 1
+                    break
+            else:
+                zero_count += 1
+                labels[node] = 0
+        except KeyError:
+            print("ERROR interaction not found for", node)
             zero_count += 1
             labels[node] = 0
 
@@ -48,11 +53,12 @@ class V1(Dataset):
                  graphs_path='../data/graphs/interfaces_cutoff10/',
                  debug=False,
                  shuffled=False,
+                 use_mode=False
                  ):
 
         self.path = graphs_path
         self.all_graphs = sorted(os.listdir(graphs_path))
-
+        self.use_mode = use_mode
 
         self.edge_map = edge_map
         # This is len() so we have to add the +1
@@ -72,7 +78,7 @@ class V1(Dataset):
         graph = nx.to_undirected(graph)
         one_hot = {edge: torch.tensor(self.edge_map[label]) for edge, label in
                    (nx.get_edge_attributes(graph, 'label')).items()}
-        interface = get_labels(graph)
+        interface = get_labels(graph, mode=self.use_mode)
         nx.set_node_attributes(graph, name='interface', values = interface)
         nx.set_edge_attributes(graph, name='one_hot', values=one_hot)
 
@@ -94,6 +100,7 @@ class Loader():
                  num_workers=20,
                  debug=False,
                  shuffled=False,
+                 use_mode=False,
                  edge_map=EDGE_MAP):
         """
 
@@ -108,6 +115,7 @@ class Loader():
         self.dataset = V1(graphs_path=graphs_path,
                           debug=debug,
                           shuffled=shuffled,
+                          use_mode=use_mode,
                           edge_map=edge_map)
 
         self.num_edge_types = self.dataset.num_edge_types
@@ -149,6 +157,7 @@ def loader_from_hparams(graphs_path, hparams):
     """
     loader = Loader(graphs_path=graphs_path,
                     batch_size=hparams.get('argparse', 'batch_size'),
-                    num_workers=hparams.get('argparse', 'workers'))
+                    num_workers=hparams.get('argparse', 'workers'),
+                    use_mode=hparams.get('argparse', 'use_mode'))
     return loader
 

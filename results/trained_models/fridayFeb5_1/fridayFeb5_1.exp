@@ -1,0 +1,16 @@
+[argparse]
+interaction_type = rna
+batch_size = 20
+workers = 0
+wall_time = None
+name = fridayFeb5_1
+timed = False
+num_epochs = 10
+device = 0
+optim = adam
+lr = 0.002
+self_loop = True
+lin_output = False
+embedding_dims = [16, 1]
+num_edge_types = 13
+

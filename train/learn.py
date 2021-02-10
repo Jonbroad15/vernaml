@@ -48,7 +48,7 @@ def print_gradients(model):
     pass
 
 
-def test(model, test_loader, device):
+def test(model, test_loader, device, threshold):
     """
     Compute accuracy and loss of model over given dataset
     :param model:
@@ -61,24 +61,33 @@ def test(model, test_loader, device):
     model.eval()
     recons_loss_tot = 0
     test_size = len(test_loader)
+    correct = 0.0
+    total_nodes = 0.0
     for batch_idx, graph in enumerate(test_loader):
         # Get data on the devices
         graph = send_graph_to_device(graph, device)
-
+        batch_size = graph.number_of_nodes()
         # Do the computations for the forward pass
         with torch.no_grad():
             out = model(graph)
 
             #TODO: get labels from graph
-            label = graph.ndata['interface'].to(torch.float32)
+            labels = graph.ndata['interface'].to(torch.float32)
 
-            loss = F.binary_cross_entropy(out, label)
+            loss = F.binary_cross_entropy(out, labels)
 
             recons_loss_tot += loss
-    return recons_loss_tot / test_size
+
+            preds = (out > threshold).float()
+            correct += (preds == labels).float().sum()
+            total_nodes += batch_size
+
+    return recons_loss_tot / test_size, correct/total_nodes
 
 
-def train_model(model, optimizer, train_loader, test_loader, save_path,
+def train_model(model, optimizer, train_loader, test_loader,
+                # save_path,
+                threshold = 0.5, verbose=True,
                 writer=None, num_epochs=25, wall_time=None, embed_only=-1):
     """
     Performs the entire training routine.
@@ -97,76 +106,91 @@ def train_model(model, optimizer, train_loader, test_loader, save_path,
     epochs_from_best = 0
     attributions = 0
     early_stop_threshold = 60
-
     start_time = time.time()
     best_loss = sys.maxsize
     for epoch in range(num_epochs):
         # Training phase
         model.train()
         running_loss = 0.0
+        correct = 0.0
+        total_nodes = 0.0
         num_batches = len(train_loader)
 
         for batch_idx, graph in enumerate(train_loader):
-            label = graph.ndata['interface'].to(torch.float32)
+            labels = graph.ndata['interface'].to(torch.float32)
             # Get data on the devices
             graph = send_graph_to_device(graph, device)
-
+            batch_size = graph.number_of_nodes()
             # Do the computations for the forward pass
             out = model(graph)
             # print('out:\n', out, out.shape)
-            # print('label:\n', label, label.shape)
-            loss = F.binary_cross_entropy(out, label)
+            # print('label:\n', labels, labels.shape)
+            loss = F.binary_cross_entropy(out, labels)
             # Backward
             loss.backward()
             optimizer.step()
             model.zero_grad()
             # Metrics
             loss = loss.item()
+            preds = (out > threshold).float()
+            correct += (preds == labels).float().sum()
+            total_nodes += batch_size
             running_loss += loss
 
-            if batch_idx % 20 == 0:
-                time_elapsed = time.time() - start_time
-                print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}  Time: {:.2f}'.format(
-                    epoch + 1,
-                    (batch_idx + 1),
-                    num_batches,
-                    100. * (batch_idx + 1) / num_batches,
-                    loss,
-                    time_elapsed))
+            # if batch_idx % 20 == 0 and verbose:
+            time_elapsed = time.time() - start_time
+                # print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}  Time: {:.6f}'.format(
+                    # epoch + 1,
+                    # (batch_idx + 1),
+                    # num_batches,
+                    # 100. * (batch_idx + 1) / num_batches,
+                    # loss,
+                    # time_elapsed))
 
                 # tensorboard logging
-                step = epoch * num_batches + batch_idx
-                writer.add_scalar("Training loss", loss, step)
+                # step = epoch * num_batches + batch_idx
+                # writer.add_scalar("Training loss", loss, step)
 
         # # Log training metrics
+        train_acc = correct / total_nodes
         train_loss = running_loss / num_batches
+        if verbose: print('Train Epoch: {} [100%]\t Loss: {:.6f} \t Accuracy: {:.4f} \t Time: {:.2f}'.format(
+                epoch + 1,
+                train_loss,
+                train_acc,
+                time_elapsed))
         writer.add_scalar("Training epoch loss", train_loss, epoch)
+        writer.add_scalar("Training accuracy", train_acc, epoch)
+
+        for name, weight in model.named_parameters():
+            writer.add_histogram(name, weight, epoch)
+            writer.add_histogram(f'{name}.grad', weight.grad, epoch)
 
         # Test phase
-        test_loss = test(model, test_loader, device)
-
+        test_loss, test_acc = test(model, test_loader, device, threshold)
+        writer.add_scalar("Test Accuracy", test_acc, epoch)
         writer.add_scalar("Test loss during training", test_loss, epoch)
         #
-        # Checkpointing
-        if test_loss < best_loss:
-            best_loss = test_loss
-            epochs_from_best = 0
+        # # Checkpointing
+        # if test_loss < best_loss:
+            # best_loss = test_loss
+            # epochs_from_best = 0
 
-            model.cpu()
-            # print(">> saving checkpoint")
-            torch.save({
-                'epoch': epoch,
-                'model_state_dict': model.state_dict(),
-                'optimizer_state_dict': optimizer.state_dict()
-            }, save_path)
-            model.to(device)
+            # # model.cpu()
+            # # print(">> saving checkpoint")
+            # # torch.save({
+                # # 'epoch': epoch,
+                # # 'model_state_dict': model.state_dict(),
+                # # 'optimizer_state_dict': optimizer.state_dict()
+            # # }, save_path)
+            # # model.to(device)
 
-        # Early stopping
-        else:
-            epochs_from_best += 1
-            if epochs_from_best > early_stop_threshold:
-                print('This model was early stopped')
-                break
+        # # Early stopping
+        # else:
+            # epochs_from_best += 1
+            # if epochs_from_best > early_stop_threshold:
+                # print('This model was early stopped')
+                # break
 
         # Sanity Check
         if wall_time is not None:
