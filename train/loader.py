@@ -86,12 +86,16 @@ class V1(Dataset):
         g_dgl.from_networkx(nx_graph=graph, edge_attrs=['one_hot'], node_attrs=['interface'])
 
 
-        return g_dgl
+        return g_dgl, [idx]
 
 def collate_fn(samples):
     # The input `samples` is a list of pairs
     #  (graph, label).
-    return dgl.batch(samples)
+    graphs, idx = map(list, zip(*samples))
+    batch = dgl.batch(graphs)
+    idx = np.array(idx)
+
+    return batch, torch.from_numpy(idx)
 
 class Loader():
     def __init__(self,
@@ -140,14 +144,37 @@ class Loader():
 
 
 
-        train_loader = DataLoader(dataset=train_set, shuffle=True, batch_size=self.batch_size,
-                                  num_workers=self.num_workers, collate_fn=collate_fn)
+        train_loader = DataLoader(dataset=train_set, shuffle=True,
+                                    batch_size=self.batch_size,
+                                    num_workers=self.num_workers,
+                                    collate_fn=collate_fn)
         # valid_loader = DataLoader(dataset=valid_set, shuffle=True, batch_size=self.batch_size,
         #                           num_workers=self.num_workers, collate_fn=collate_block)
         test_loader = DataLoader(dataset=test_set, shuffle=True, batch_size=self.batch_size,
                                  num_workers=self.num_workers, collate_fn=collate_fn)
         all_loader = DataLoader(dataset=all_set, shuffle=True, batch_size=self.batch_size,
                                 num_workers=self.num_workers, collate_fn=collate_fn)
+        # i=0
+        # num_batches = len(train_loader)
+        # t = iter(train_loader)
+        # for batch in train_loader:
+            # # print(batch)
+            # i+=1
+        # for j in range(num_batches):
+            # print(j)
+            # try:
+                # print(next(t))
+            # except StopIteration:
+                # t = iter(train_loader)
+                # print(next(t))
+            # # if j == 25:
+                # # break
+
+
+        # print('num_batches', num_batches)
+        # print('i', i)
+
+        # raise Exception
 
         return train_loader, test_loader, all_loader
 

@@ -27,7 +27,7 @@ def main():
     parser.add_argument("-wt", "--wall_time", type=int, default=None, help="Max time to run the model")
     parser.add_argument("-n", "--name", type=str, default='default_name', help="Name for the logs")
     parser.add_argument("-t", "--timed", help="to use timed learning", action='store_true')
-    parser.add_argument("-ep", "--num_epochs", type=int, help="number of epochs to train", default=100)
+    parser.add_argument("-ep", "--num_epochs", type=int, help="number of epochs to train", default=30)
     parser.add_argument("-dev", "--device", default=0, type=int, help="gpu device to use")
     parser.add_argument('-m', '--use_mode', default=False, action='store_true')
 
@@ -52,13 +52,13 @@ def main():
     from itertools import product
     parameters = dict(
             # lr = [0.005],
-            batch_size = [20],
+            batch_size = [40],
             # lin_output = [True, False],
             # self_loop = [True, False],
             # embedding_dims = [[32, 16, 1], [32, 8, 1], [32, 32, 1], [64, 32, 1], [64, 16, 1]],
             # optim = ['adam', 'sgd'],
             # use_mode = [True, False],
-            data = ['rna', 'protein', 'ligand', 'ion']
+            data = ['all']
             )
     param_values = [v for v in parameters.values()]
 
@@ -137,6 +137,7 @@ def main():
             # open(os.path.join(os.path.dirname(save_path), 'meta.p'), 'wb'))
 
         # Run
+        # try:
         train_model(model=model,
                     optimizer=optimizer,
                     train_loader=train_loader,
@@ -147,6 +148,11 @@ def main():
                     wall_time=args.wall_time,
                     threshold=args.threshold,
                     verbose=verbose)
+        # except ValueError:
+            # print('Not enough batches for dataset:', args.interaction_type,
+                    # 'with batch size:', args.batch_size)
+            # print('(Skipping this run)')
+            # continue
 
 if __name__ == '__main__':
     main()
