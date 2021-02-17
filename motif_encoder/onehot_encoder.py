@@ -426,12 +426,9 @@ def get_weights(X, y, hot_map):
     """
 
     print(f"data shape = {X.shape}")
-    X_train, X_test, y_train, y_test = train_test_split(X, y,
-                                                        test_size=.2,
-                                                        random_state=0)
     # Fit model
     classifier = SGDClassifier()
-    model = classifier.fit(X_train, y_train)
+    model = classifier.fit(X, y)
 
     # save coefficients
     weights = np.squeeze(model.coef_)
