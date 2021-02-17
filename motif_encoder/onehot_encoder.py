@@ -14,6 +14,8 @@ from sklearn.dummy import DummyClassifier
 from sklearn.model_selection import train_test_split
 
 script_dir = os.path.dirname(os.path.realpath(__file__))
+graphs_dir = os.path.join(script_dir, '..', 'data')
+onehot_cache = os.path.join(script_dir, '..', 'data', '.onehot_cache')
 sys.path.append(os.path.join(script_dir, '..'))
 
 from tools.meta_graph import MGraph, MGraphAll, MGraphNC
@@ -30,6 +32,8 @@ def get_binary_node_labels(graph_dir, task):
 
     labels = {}
     keyerrors = []
+
+    if task == 'practice_n100': task = 'rna'
 
     for graph_file in os.listdir(graph_dir):
         if '.nx' not in graph_file: continue
@@ -118,7 +122,6 @@ def get_motifs_metagraph(meta_graph_path,
     :motif_set: set of motifs contained in node_to_motifs
     """
     # Cache node_to_motifs mapping
-    onehot_cache = os.path.join(script_dir, '..', 'data', '.onehot_cache')
 
     if not os.path.exists(onehot_cache):
         os.mkdir(onehot_cache)
@@ -250,6 +253,46 @@ def get_motifs_json(json_dict, native_dir):
 
     return node_to_motifs, motif_set
 
+def get_motif_to_nodes(meta_graph_path,
+                        load_from_cache=True,
+                        motif_size = None):
+    """
+    Return a reverse mapping of node_to_motifs
+    """
+
+    motif_to_nodes = defaultdict(set)
+    node_to_motifs, motif_set = get_motifs_metagraph(meta_graph_path,
+                                                    load_from_cache=load_from_cache,
+                                                    motif_size = motif_size)
+    #CACHING
+    motif_to_nodes_file = os.path.join(onehot_cache, 'motif_to_nodes.p')
+    if os.path.exists(motif_to_nodes_file)\
+    and load_from_cache:
+        print('Loading motifs_to_nodes from cache')
+        with open(motif_to_nodes_file, 'rb') as f:
+            motif_to_nodes = pickle.load(f)
+    else:
+        #COMPUTE
+        print('Computing motif_to_nodes map')
+        for motif in tqdm(motif_set):
+            nodeset = set([node for node, value in node_to_motifs.items() if motif in value])
+            instances = defaultdict(list)
+            for node in nodeset:
+                graph = node[0]
+                instances[graph].append(node)
+
+            motif_to_nodes[motif] = instances
+
+
+        #WRITE
+        with open(motif_to_nodes_file, 'wb') as f:
+            pickle.dump(motif_to_nodes, f)
+
+
+    # Group nodes by graphs?
+
+    return motif_to_nodes
+
 def build_onehot_nodes(node_labels, native_dir,
                                  meta_graph_path=None,
                                  json_motifs=None,
@@ -296,7 +339,7 @@ def build_onehot_nodes(node_labels, native_dir,
 
     y = [target_encode[label] for label in target_labels]
 
-    return X, y
+    return X, y, hot_map
 
 def get_neighbours(graph_dir,
                         load_from_cache=True,
@@ -376,6 +419,30 @@ def kfold(X, y):
     print("Dummy: %0.2f (+/- %0.2f)" % (dummy_scores.mean(), dummy_scores.std() * 2))
 
     return (scores.mean(), dummy_scores.mean())
+
+def get_weights(X, y, hot_map):
+    """
+    train classifiers and output the top weighted motifs
+    """
+
+    print(f"data shape = {X.shape}")
+    X_train, X_test, y_train, y_test = train_test_split(X, y,
+                                                        test_size=.2,
+                                                        random_state=0)
+    # Fit model
+    classifier = SGDClassifier()
+    model = classifier.fit(X_train, y_train)
+
+    # save coefficients
+    weights = np.squeeze(model.coef_)
+    print('weights shape:', weights.shape)
+
+    reverse_hot_map = {k : v for v, k in hot_map.items()}
+
+    motif_weights = {reverse_hot_map[i] : weight for i, weight in enumerate(weights)}
+
+    return motif_weights
+
 
 def draw_roc(roc_data, save_fig):
     """
@@ -501,19 +568,19 @@ def compute_accuracy(X, y):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('-G', '--graph_dir',
+    parser.add_argument('-I', '--interface_dir',
                         help='directory containing graphs to predict on',
-                        default=os.path.join(script_dir, '..', 'data', 'graphs',
+                        default=os.path.join(graphs_dir,
                                             'interfaces_cutoff10'))
     parser.add_argument('-N', '--native_dir',
                         help='directory containing native graphs',
-                        default = os.path.join(script_dir, '..', 'data', 'graphs', 'native'))
+                        default = os.path.join(graphs_dir, 'native'))
     parser.add_argument('-onehot_data_output',
                         help='JSON output for onehot data',
                         default=os.path.join(script_dir, '..', 'data', 'onehot_data.json'))
     parser.add_argument('-m', '--metagraph',
-                        help = 'Metagraph of Motifs from vernal')
-                        #default = os.path.join(script_dir, '..', 'data', 'general_fuzzy.p'))
+                        help = 'Metagraph of Motifs from vernal',
+                        default = os.path.join(script_dir, '..', 'data', 'general_fuzzy.p'))
     parser.add_argument('-j', '--json_motifs',
                         help='motifs given in a json serialization instead of metagraph')
     parser.add_argument('-n', action='store_false',
@@ -523,7 +590,7 @@ def main():
                         help='clear cache', default=True)
     parser.add_argument('-o', '--accuracy_output',
                         help='output accuracy table to csv file')
-    parser.add_argument('-t', '--tasks', default = 'rna ligand protein ion')
+    parser.add_argument('-t', '--tasks', default = 'protein rna ligand ion')
     parser.add_argument('-f', '--fig_save',
                         help='output file for roc plots',
                         default = os.path.join(script_dir, '..', 'images', 'rocs'))
@@ -542,25 +609,24 @@ def main():
     roc_data = defaultdict(list)
 
     for task in tasks:
-        print('Computing accuracy for: ', task)
-        print('Doing node_level predictions')
+        print('Target task: ', task)
         labels = {}
-        labels = get_binary_node_labels(os.path.join(args.graph_dir, task), task)
+        labels = get_binary_node_labels(os.path.join(args.interface_dir, task), task)
 
         if args.metagraph:
             name = 'vernal'
             print('Motif Set:', name)
-            X, y = build_onehot_nodes(labels, args.native_dir,
+            X, y, hot_map = build_onehot_nodes(labels, args.native_dir,
                                         load_from_cache=args.c,
                                         meta_graph_path=args.metagraph,
                                         extend = args.extend_motifs)
             # accuracy['vernal'][task] = kfold(X, y)
-            roc_data[task].append((X, y, name))
+            roc_data[task].append((X, y, name, hot_map))
 
             if args.motif_size:
                 name = 'vernal-' + str(args.motif_size) + 'mers'
                 print('Motif Set:', name)
-                X, y = build_onehot_nodes(labels, args.native_dir,
+                X, y, hot_map = build_onehot_nodes(labels, args.native_dir,
                                             load_from_cache=args.c,
                                             meta_graph_path=args.metagraph,
                                             motif_size = args.motif_size,
@@ -575,7 +641,7 @@ def main():
                 data = json.load(f)
             for name, motif_set in data.items():
                 print('Motif Set: ', name)
-                X, y = build_onehot_nodes(labels, args.native_dir,
+                X, y, hot_map = build_onehot_nodes(labels, args.native_dir,
                                             load_from_cache=args.c,
                                             json_motifs=motif_set,
                                             motif_size = args.motif_size,
@@ -583,7 +649,21 @@ def main():
                # accuracy[name][task] = kfold(X, y)
                 roc_data[task].append((X, y, name))
 
-    weights = draw_roc(roc_data, args.fig_save)
+        # Get top weighted motifs
+        motif_to_nodes = get_motif_to_nodes(args.metagraph)
+        for X, y, name, hot_map in roc_data[task]:
+            weights = get_weights(X, y, hot_map)
+            print(f'top ten motifs for {name} on {task}:')
+            top_ten_motifs = sorted(weights, key=weights.get, reverse=True)[:10]
+            top_ten_occurences = { motif : motif_to_nodes[motif] for motif in top_ten_motifs}
+            for motif, occurences in top_ten_occurences.items():
+                print(motif)
+                print('occurences:')
+                for occurence in occurences:
+                    print(occurence)
+            with open(os.path.join(script_dir, '..', 'data', f'top_ten_motifs_{name}_{task}.p'), 'wb') as f:
+                pickle.dump(top_ten_occurences, f)
+
 
     if args.plot_weights:
         plot_weights(weights['vernal'], args.plot_weights)

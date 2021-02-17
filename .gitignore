@@ -3,6 +3,7 @@ data/*
 !data/ligand_list.txt
 !data/all_motifs_unchopped.json
 !data/graphs/interfaces_cutoff10/practice_n100/*
+!data/top_ten*
 *.swp
 junk/
 junk*
