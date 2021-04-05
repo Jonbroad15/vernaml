@@ -91,7 +91,7 @@ class Model(nn.Module):
 
 
     def forward(self, g):
-        h = torch.ones(len(g.nodes())).view(-1, 1).to(self.current_device)
+        h = torch.rand(len(g.nodes())).view(-1, 1).to(self.current_device)
         for i, layer in enumerate(self.layers):
             if self.lin_output and (i == len(self.layers) - 1):
                 h = torch.sigmoid(layer(h))
