@@ -66,7 +66,7 @@ def test(model, test_loader, device, threshold):
     iterator = iter(test_loader)
     for batch_idx in range(test_size):
         try:
-            graph, inds = next(iterator)
+            graph, inds, _ = next(iterator)
         except StopIteration:
             iterator = iter(test_loader)
             batch_idx -= 1
@@ -76,7 +76,7 @@ def test(model, test_loader, device, threshold):
         batch_size = graph.number_of_nodes()
         # Do the computations for the forward pass
         with torch.no_grad():
-            out = model(graph)
+            out = model(graph).squeeze()
 
             #TODO: get labels from graph
             labels = graph.ndata['interface'].to(torch.float32)
@@ -137,11 +137,11 @@ def train_model(model, optimizer, train_loader, test_loader,
             # print(graph)
 
         iterator = iter(train_loader)
-        for batch_idx in range(num_batches):
+        for batch_idx in range(len(train_loader)):
 
             try:
-                graph, inds = next(iterator)
-            except StopIteration:
+                graph, inds, _ = next(iterator)
+            except:
                 iterator = iter(train_loader)
                 batch_idx -= 1
                 continue
@@ -149,9 +149,9 @@ def train_model(model, optimizer, train_loader, test_loader,
             graph = send_graph_to_device(graph, device)
             labels = graph.ndata['interface'].to(torch.float32)
             batch_size = graph.number_of_nodes()
-            # print(batch_size)
+            # print(b_size)
             # Do the computations for the forward pass
-            out = model(graph)
+            out = model(graph).squeeze()
 
             # print('out:\n', out, out.shape)
             # print('label:\n', labels, labels.shape)
@@ -167,7 +167,7 @@ def train_model(model, optimizer, train_loader, test_loader,
             preds = (out > threshold).float()
             correct += (preds == labels).float().sum()
             total_nodes += batch_size
-            # print('batch', batch_idx, 'batch_size: ', batch_size, 'total_nodes:', total_nodes)
+            # print(f'batch: {batch_idx} \t batch_size: {batch_size},\t total_nodes:', total_nodes)
             running_loss += loss
             time_elapsed = time.time() - start_time
 
@@ -209,6 +209,7 @@ def train_model(model, optimizer, train_loader, test_loader,
 
         # Test phase
         test_loss, test_acc = test(model, test_loader, device, threshold)
+        print(f"Test loss: {test_loss:.4f} \t test accuracy: {test_acc:.4f}")
         writer.add_scalar("Test Accuracy", test_acc, epoch)
         writer.add_scalar("Test loss during training", test_loss, epoch)
         #

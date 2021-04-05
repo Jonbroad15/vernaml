@@ -1,38 +1,50 @@
-import os
-import sys
 import pickle
-
+import sys
+import os
 from tqdm import tqdm
 import networkx as nx
 import dgl
 import numpy as np
 import torch
 
+import os
+import sys
 
 script_dir = os.path.dirname(os.path.realpath(__file__))
 if __name__ == "__main__":
     sys.path.append(os.path.join(script_dir, '..'))
 
 from torch.utils.data import Dataset, DataLoader, Subset
+from kernels.node_sim import SimFunctionNode, k_block_list, simfunc_from_hparams, EDGE_MAP
+from utils import graph_io
 
-EDGE_MAP = {'B53': 0, 'CHH': 1, 'CHS': 2, 'CHW': 3, 'CSH': 2, 'CSS': 4, 'CSW': 5, 'CWH': 3, 'CWS': 5, 'CWW': 6, 'THH': 7, 'THS': 8, 'THW': 9, 'TSH': 8, 'TSS': 10, 'TSW': 11, 'TWH': 9, 'TWS': 11, 'TWW': 12}
 
-def get_labels(g, mode=False):
+def get_labels(g, interaction, mode=False):
 
     one_count = 0
     zero_count = 0
     labels = {}
     for node in g.nodes:
         try:
-            for interaction in ['rna', 'protein', 'ion', 'ligand']:
-                if g.nodes[node][interaction] is not None:
+            if interaction == 'any':
+                for interaction in ['protein', 'ion', 'small-molecule']:
+                    if g.nodes[node]['binding_' + interaction] is not None:
+                        # Interface
+                        labels[node] = 1
+                        one_count += 1
+                        break
+                else:
+                    zero_count += 1
+                    labels[node]= 0
+            else:
+                if g.nodes[node]['binding_' + interaction] is not None:
                     # Interface
                     labels[node] = 1
                     one_count += 1
-                    break
-            else:
-                zero_count += 1
-                labels[node] = 0
+                else:
+                    zero_count += 1
+                    labels[node]= 0
+
         except KeyError:
             print("ERROR interaction not found for", node)
             zero_count += 1
@@ -46,19 +58,48 @@ def get_labels(g, mode=False):
     else:
         return labels
 
-
-class V1(Dataset):
+class GraphDataset(Dataset):
     def __init__(self,
                  edge_map,
-                 graphs_path='../data/graphs/interfaces_cutoff10/',
+                 node_simfunc=None,
+                 annotated_path='../data/annotated/samples',
                  debug=False,
                  shuffled=False,
-                 use_mode=False
+                 directed=True,
+                 force_directed=False,
+                 label='LW'
                  ):
+        """
 
-        self.path = graphs_path
-        self.all_graphs = sorted(os.listdir(graphs_path))
-        self.use_mode = use_mode
+        :param edge_map: Necessary to build the one hot mapping from edge labels to an id
+        :param node_simfunc: Similarity function defined in kernels/node_sim
+        :param annotated_path: The path of the data. If node_sim is not None, this data should be annotated
+        (if not, it will annotate the data which is a long process)
+                        TODO : do this annotate if not, probably with input confirmation
+        :param debug:
+        :param shuffled:
+        :param directed: Whether we want to use directed graphs
+        :param force_directed: If we ask for directed graphs from undirected graphs, this will raise an Error as
+        we should rather be using directed annotations that are more rich (for instance we get the BB direction)
+        :param label: The label to use
+        """
+
+
+        self.path = annotated_path
+        self.all_graphs = sorted(os.listdir(annotated_path))
+        self.label = label
+        self.directed = directed
+        self.node_simfunc = node_simfunc
+
+        if node_simfunc is not None:
+            if self.node_simfunc.method in ['R_graphlets', 'graphlet', 'R_ged']:
+                self.level = 'graphlet_annots'
+            else:
+                self.level = 'edge_annots'
+            self.depth = self.node_simfunc.depth
+        else:
+            self.level = None
+            self.depth = None
 
         self.edge_map = edge_map
         # This is len() so we have to add the +1
@@ -70,121 +111,213 @@ class V1(Dataset):
 
     def __getitem__(self, idx):
         g_path = os.path.join(self.path, self.all_graphs[idx])
-        try:
-            graph = nx.read_gpickle(g_path)
-        except:
-            print("ERROR could not read graph file:\n", g_path)
+        graph = graph_io.load_json(g_path)
 
-        graph = nx.to_undirected(graph)
+        # We can go from directed to undirected
+        if self.directed and not nx.is_directed(graph):
+            raise ValueError(f"The loader is asked to produce a directed graph from {g_path} that is undirected")
+        if not self.directed:
+            graph = nx.to_undirected(graph)
+
+        # This is a weird call but necessary for DGL as it only deals
+        #   with undirected graphs that have both directed edges
+        # The error raised above ensures that we don't have a discrepancy *
+        #   between the attribute directed and the graphs :
+        #   One should not explicitly ask to make the graphs directed in the learning as it is done by default but when
+        #   directed graphs are what we want, we should use the directed annotation rather than the undirected.
+        graph = nx.to_directed(graph)
         one_hot = {edge: torch.tensor(self.edge_map[label]) for edge, label in
-                   (nx.get_edge_attributes(graph, 'label')).items()}
-        interface = get_labels(graph, mode=self.use_mode)
-        nx.set_node_attributes(graph, name='interface', values = interface)
+                   (nx.get_edge_attributes(graph, self.label)).items()}
         nx.set_edge_attributes(graph, name='one_hot', values=one_hot)
+        interface = get_labels(graph, interaction='protein')
+        nx.set_node_attributes(graph, name='interface', values = interface)
 
-        g_dgl = dgl.DGLGraph()
-        g_dgl.from_networkx(nx_graph=graph, edge_attrs=['one_hot'], node_attrs=['interface'])
+        # Careful ! When doing this, the graph nodes get sorted.
+        g_dgl = dgl.from_networkx(nx_graph=graph, edge_attrs=['one_hot'],
+                                node_attrs=['interface'])
+
+        if self.node_simfunc is not None:
+            ring = list(sorted(graph.nodes(data=self.level)))
+            return g_dgl, ring
+        else:
+            return g_dgl, 0
 
 
-        return g_dgl, [idx]
+def collate_wrapper(node_simfunc=None):
+    """
+        Wrapper for collate function so we can use different node similarities.
 
-def collate_fn(samples):
-    # The input `samples` is a list of pairs
-    #  (graph, label).
-    graphs, idx = map(list, zip(*samples))
-    batch = dgl.batch(graphs)
-    idx = np.array(idx)
+        We cannot use functools.partial as it is not picklable so incompatible with Pytorch loading
+    """
+    if node_simfunc is not None:
+        def collate_block(samples):
+            # The input `samples` is a list of tuples (graph, ring).
+            graphs, rings = map(list, zip(*samples))
 
-    return batch, torch.from_numpy(idx)
+            # DGL makes batching by making all small graphs a big one with disconnected components
+            # We keep track of those
+            batched_graph = dgl.batch(graphs)
+            len_graphs = [graph.number_of_nodes() for graph in graphs]
+
+            # Now compute similarities, we need to flatten the list and then use the kernels :
+            # The rings is now a list of list of tuples
+            rings = [item for ring in rings for item in ring]
+            K = k_block_list(rings, node_simfunc)
+            return batched_graph, torch.from_numpy(K).detach().float(), len_graphs
+    else:
+        def collate_block(samples):
+            # The input `samples` is a list of pairs
+            #  (graph, label).
+            graphs, _ = map(list, zip(*samples))
+            batched_graph = dgl.batch(graphs)
+            len_graphs = [graph.number_of_nodes() for graph in graphs]
+            return batched_graph, [1 for _ in samples], len_graphs
+    return collate_block
+
 
 class Loader():
     def __init__(self,
-                 graphs_path='data/graphs/interfaces_cutoff10',
+                 annotated_path='../data/annotated/samples/',
                  batch_size=5,
                  num_workers=20,
                  debug=False,
                  shuffled=False,
-                 use_mode=False,
-                 edge_map=EDGE_MAP):
+                 edge_map=EDGE_MAP,
+                 node_simfunc=None,
+                 directed=True,
+                 split=True):
         """
 
-        :param graphs_path:
+        :param annotated_path:
         :param batch_size:
         :param num_workers:
         :param debug:
         :param shuffled:
+        :param node_simfunc: The node comparison object to use for the embeddings. If None is selected,
+        will just return graphs
+        :param hparams:
         """
         self.batch_size = batch_size
         self.num_workers = num_workers
-        self.dataset = V1(graphs_path=graphs_path,
-                          debug=debug,
-                          shuffled=shuffled,
-                          use_mode=use_mode,
-                          edge_map=edge_map)
+        self.dataset = GraphDataset(annotated_path=annotated_path,
+                                    debug=debug,
+                                    shuffled=shuffled,
+                                    node_simfunc=node_simfunc,
+                                    edge_map=edge_map,
+                                    directed=directed)
 
+        self.directed = directed
+        self.node_simfunc = node_simfunc
         self.num_edge_types = self.dataset.num_edge_types
 
+        self.split = split
+
     def get_data(self):
-        n = len(self.dataset)
-        indices = list(range(n))
-        # np.random.shuffle(indices)
+        if not self.split:
+            collate_block = collate_wrapper(self.node_simfunc)
 
-        np.random.seed(0)
-        split_train, split_valid = 0.7, 0.7
-        train_index, valid_index = int(split_train * n), int(split_valid * n)
+            loader = DataLoader(dataset=self.dataset, shuffle=True, batch_size=self.batch_size,
+                                num_workers=self.num_workers, collate_fn=collate_block)
+            return loader
 
-        train_indices = indices[:train_index]
-        valid_indices = indices[train_index:valid_index]
-        test_indices = indices[valid_index:]
+        else:
+            n = len(self.dataset)
+            indices = list(range(n))
+            # np.random.shuffle(indices)
 
-        train_set = Subset(self.dataset, train_indices)
-        valid_set = Subset(self.dataset, valid_indices)
-        test_set = Subset(self.dataset, test_indices)
-        all_set = Subset(self.dataset, indices)
+            np.random.seed(0)
+            split_train, split_valid = 0.7, 0.85
+            train_index, valid_index = int(split_train * n), int(split_valid * n)
 
+            train_indices = indices[:train_index]
+            valid_indices = indices[train_index:valid_index]
+            test_indices = indices[valid_index:]
 
+            train_set = Subset(self.dataset, train_indices)
+            valid_set = Subset(self.dataset, valid_indices)
+            test_set = Subset(self.dataset, test_indices)
 
-        train_loader = DataLoader(dataset=train_set, shuffle=True,
-                                    batch_size=self.batch_size,
-                                    num_workers=self.num_workers,
-                                    collate_fn=collate_fn)
-        # valid_loader = DataLoader(dataset=valid_set, shuffle=True, batch_size=self.batch_size,
-        #                           num_workers=self.num_workers, collate_fn=collate_block)
-        test_loader = DataLoader(dataset=test_set, shuffle=True, batch_size=self.batch_size,
-                                 num_workers=self.num_workers, collate_fn=collate_fn)
-        all_loader = DataLoader(dataset=all_set, shuffle=True, batch_size=self.batch_size,
-                                num_workers=self.num_workers, collate_fn=collate_fn)
-        # i=0
-        # num_batches = len(train_loader)
-        # t = iter(train_loader)
-        # for batch in train_loader:
-            # # print(batch)
-            # i+=1
-        # for j in range(num_batches):
-            # print(j)
-            # try:
-                # print(next(t))
-            # except StopIteration:
-                # t = iter(train_loader)
-                # print(next(t))
-            # # if j == 25:
-                # # break
+            print(f"training items: ", len(train_set))
+
+            collate_block = collate_wrapper(self.node_simfunc)
+
+            train_loader = DataLoader(dataset=train_set, shuffle=True, batch_size=self.batch_size,
+                                      num_workers=self.num_workers, collate_fn=collate_block)
+            valid_loader = DataLoader(dataset=valid_set, shuffle=True, batch_size=self.batch_size,
+                                      num_workers=self.num_workers, collate_fn=collate_block)
+            test_loader = DataLoader(dataset=test_set, shuffle=True, batch_size=self.batch_size,
+                                     num_workers=self.num_workers, collate_fn=collate_block)
+            return train_loader, valid_loader, test_loader
 
 
-        # print('num_batches', num_batches)
-        # print('i', i)
+class InferenceLoader(Loader):
+    def __init__(self,
+                 list_to_predict,
+                 annotated_path,
+                 batch_size=5,
+                 num_workers=20,
+                 edge_map=EDGE_MAP,
+                 directed=True):
+        super().__init__(
+            annotated_path=annotated_path,
+            batch_size=batch_size,
+            num_workers=num_workers,
+            edge_map=edge_map,
+            directed=directed
+        )
+        self.dataset.all_graphs = list_to_predict
+        self.dataset.path = annotated_path
+        print(len(list_to_predict))
 
-        # raise Exception
+    def get_data(self):
+        collate_block = collate_wrapper(None)
+        train_loader = DataLoader(dataset=self.dataset,
+                                  shuffle=False,
+                                  batch_size=self.batch_size,
+                                  num_workers=self.num_workers,
+                                  collate_fn=collate_block)
+        return train_loader
 
-        return train_loader, test_loader, all_loader
 
-def loader_from_hparams(graphs_path, hparams):
+def loader_from_hparams(annotated_path, hparams, list_inference=None):
     """
         :params
+        :get_sim_mat: switches off computation of rings and K matrix for faster loading.
     """
-    loader = Loader(graphs_path=graphs_path,
-                    batch_size=hparams.get('argparse', 'batch_size'),
-                    num_workers=hparams.get('argparse', 'workers'),
-                    use_mode=hparams.get('argparse', 'use_mode'))
+    if list_inference is None:
+        node_simfunc=None
+        # node_simfunc = simfunc_from_hparams(hparams)
+        loader = Loader(annotated_path=annotated_path,
+                        batch_size=hparams.get('argparse', 'batch_size'),
+                        num_workers=hparams.get('argparse', 'workers'),
+                        edge_map=EDGE_MAP,#hparams.get('edges', 'edge_map'),
+                        node_simfunc=node_simfunc)
+        return loader
+
+    loader = InferenceLoader(list_to_predict=list_inference,
+                             annotated_path=annotated_path,
+                             batch_size=hparams.get('argparse', 'batch_size'),
+                             num_workers=hparams.get('argparse', 'workers'),
+                             edge_map=hparams.get('edges', 'edge_map'))
     return loader
 
+
+
+def main():
+    return
+    pass
+    annotated_path = os.path.join("..", "data", "annotated", "samples")
+    simfunc_r1 = SimFunctionNode('R_1', 2)
+    loader = Loader(annotated_path=annotated_path,
+                    num_workers=0,
+                    split=False,
+                    directed=False,
+                    node_simfunc=simfunc_r1)
+    train_loader = loader.get_data()
+    for graph, K, lengths in train_loader:
+        print('graph :', graph)
+        # print('K :', K)
+        # print('length :', lengths)
+
+if __name__ == '__main__':
+    main()
