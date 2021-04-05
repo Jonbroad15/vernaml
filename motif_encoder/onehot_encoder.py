@@ -14,7 +14,7 @@ from sklearn.dummy import DummyClassifier
 from sklearn.model_selection import train_test_split
 
 script_dir = os.path.dirname(os.path.realpath(__file__))
-graphs_dir = os.path.join(script_dir, '..', 'data')
+graphs_dir = os.path.join(script_dir, '..', 'data', 'graphs')
 onehot_cache = os.path.join(script_dir, '..', 'data', '.onehot_cache')
 sys.path.append(os.path.join(script_dir, '..'))
 
@@ -34,6 +34,7 @@ def get_binary_node_labels(graph_dir, task):
     keyerrors = []
 
     if task == 'practice_n100': task = 'rna'
+    if task == 'transcription': task = 'protein'
 
     for graph_file in os.listdir(graph_dir):
         if '.nx' not in graph_file: continue
@@ -426,12 +427,9 @@ def get_weights(X, y, hot_map):
     """
 
     print(f"data shape = {X.shape}")
-    X_train, X_test, y_train, y_test = train_test_split(X, y,
-                                                        test_size=.2,
-                                                        random_state=0)
     # Fit model
     classifier = SGDClassifier()
-    model = classifier.fit(X_train, y_train)
+    model = classifier.fit(X, y)
 
     # save coefficients
     weights = np.squeeze(model.coef_)
@@ -656,13 +654,14 @@ def main():
             print(f'top ten motifs for {name} on {task}:')
             top_ten_motifs = sorted(weights, key=weights.get, reverse=True)[:10]
             top_ten_occurences = { motif : motif_to_nodes[motif] for motif in top_ten_motifs}
+            task_dir = os.path.join(graphs_dir, 'interfaces_cutoff10', task)
+            occurences_in_taskdir = defaultdict(dict)
             for motif, occurences in top_ten_occurences.items():
-                print(motif)
-                print('occurences:')
                 for occurence in occurences:
-                    print(occurence)
+                    if any([occurence[:4] in g for g in os.listdir(task_dir)]):
+                        occurences_in_taskdir[motif][occurence] = top_ten_occurences[motif][occurence]
             with open(os.path.join(script_dir, '..', 'data', f'top_ten_motifs_{name}_{task}.p'), 'wb') as f:
-                pickle.dump(top_ten_occurences, f)
+                pickle.dump(occurences_in_taskdir, f)
 
 
     if args.plot_weights:
