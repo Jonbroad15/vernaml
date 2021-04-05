@@ -63,6 +63,9 @@ def test(model, test_loader, device, threshold):
     test_size = len(test_loader)
     correct = 0.0
     total_nodes = 0.0
+    correct_true = 0.0
+    predicted_true = 0.0
+    target_true = 0.0
     iterator = iter(test_loader)
     for batch_idx in range(test_size):
         try:
@@ -87,6 +90,11 @@ def test(model, test_loader, device, threshold):
 
             preds = (out > threshold).float()
             correct += (preds == labels).float().sum()
+
+            target_true += labels.sum()
+            predicted_true += preds.sum()
+            correct_true += ((labels==preds)*(preds==1)).float().sum()
+
             total_nodes += batch_size
 
     try:
@@ -96,7 +104,11 @@ def test(model, test_loader, device, threshold):
         for graph in test_loader:
             print(graph.number_of_nodes())
 
-    return recons_loss_tot / test_size, correct/total_nodes
+    precision = correct_true / predicted_true
+    recall = correct_true / target_true
+    f1 = 2*precision*recall / (precision + recall)
+
+    return recons_loss_tot / test_size, acc, precision, recall, f1
 
 
 def train_model(model, optimizer, train_loader, test_loader,
@@ -208,10 +220,15 @@ def train_model(model, optimizer, train_loader, test_loader,
             writer.add_histogram(f'{name}.grad', weight.grad, epoch)
 
         # Test phase
-        test_loss, test_acc = test(model, test_loader, device, threshold)
-        print(f"Test loss: {test_loss:.4f} \t test accuracy: {test_acc:.4f}")
+        test_loss, test_acc, precision, recall, f1\
+                = test(model, test_loader, device, threshold)
+        writer.add_scalar("Test Accuracy", test_acc, epoch)
+        writer.add_scalar("Precision", precision, epoch)
+        writer.add_scalar("Recall", recall, epoch)
+        writer.add_scalar("F1", f1, epoch)
         writer.add_scalar("Test Accuracy", test_acc, epoch)
         writer.add_scalar("Test loss during training", test_loss, epoch)
+        print(f"Test loss: {test_loss:.4f} \t test accuracy: {test_acc:.4f}")
         #
         # Checkpointing
         if test_loss < best_loss:
