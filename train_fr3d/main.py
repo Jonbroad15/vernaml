@@ -11,9 +11,9 @@ script_dir = os.path.dirname(os.path.realpath(__file__))
 sys.path.append(os.path.join(script_dir, '..'))
 
 # Homemade modules
-from train.loader import Loader, loader_from_hparams
-from train.model import Model, model_from_hparams
-from train.learn import train_model
+from train_fr3d.loader import Loader, loader_from_hparams
+from train_fr3d.model import Model, model_from_hparams
+from train_fr3d.learn import train_model
 from tools.learning_utils import mkdirs_learning, ConfParser
 
 verbose=True
@@ -23,7 +23,7 @@ def main():
     # General arguments
     parser.add_argument("-da", "--interaction_type", default='practice_n100')
     parser.add_argument("-bs", "--batch_size", type=int, default=2, help="choose the batch size")
-    parser.add_argument("-nw", "--workers", type=int, default=0, help="Number of workers to load data")
+    parser.add_argument("-nw", "--workers", type=int, default=4, help="Number of workers to load data")
     parser.add_argument("-wt", "--wall_time", type=int, default=None, help="Max time to run the model")
     parser.add_argument("-n", "--name", type=str, default='default_name', help="Name for the logs")
     parser.add_argument("-t", "--timed", help="to use timed learning", action='store_true')
@@ -52,13 +52,13 @@ def main():
     from itertools import product
     parameters = dict(
             # lr = [0.005],
-            batch_size = [40],
+            batch_size = [2],
             # lin_output = [True, False],
             # self_loop = [True, False],
             # embedding_dims = [[32, 16, 1], [32, 8, 1], [32, 32, 1], [64, 32, 1], [64, 16, 1]],
             # optim = ['adam', 'sgd'],
             # use_mode = [True, False],
-            data = ['all']
+            data = ['ligand', 'ion']
             )
     param_values = [v for v in parameters.values()]
 
