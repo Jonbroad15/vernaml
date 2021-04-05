@@ -21,7 +21,7 @@ verbose=True
 def main():
     parser = argparse.ArgumentParser()
     # General arguments
-    parser.add_argument("-da", "--dataset", default='graphs_nodot')
+    parser.add_argument("-da", "--dataset", default='NR_graphs_nodot')
     parser.add_argument('-i', '--interaction', default='protein')
     parser.add_argument("-bs", "--batch_size", type=int, default=4, help="choose the batch size")
     parser.add_argument("-nw", "--workers", type=int, default=0, help="Number of workers to load data")
