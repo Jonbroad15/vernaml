@@ -22,7 +22,7 @@ def main():
     parser = argparse.ArgumentParser()
     # General arguments
     parser.add_argument("-da", "--dataset", default='NR_graphs_nodot')
-    parser.add_argument('-i', '--interaction', default='ion')
+    parser.add_argument('-i', '--interaction', default='small-molecule')
     parser.add_argument("-bs", "--batch_size", type=int, default=2, help="choose the batch size")
     parser.add_argument("-nw", "--workers", type=int, default=0, help="Number of workers to load data")
     parser.add_argument("-wt", "--wall_time", type=int, default=None, help="Max time to run the model")
@@ -64,7 +64,7 @@ def main():
     from itertools import product
     for data in ['NR', 'NonRibo', 'all']:
 
-        args.dataset = os.path.join('balance_graphs/ion', data)
+        args.dataset = os.path.join('balance_graphs/ligand', data)
 
         if verbose: print(f"OPTIONS USED \n ",
               '-' * 10 + '\n',
