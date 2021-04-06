@@ -48,7 +48,7 @@ def main():
     if os.path.exists(args.output): header = False
     else: header = True
 
-    name = args.input_dir.split('/')[-1]
+    name = '_'.join(args.input_dir.split('/')[-2:])
 
     with open(args.output, 'a') as f:
         writer = csv.writer(f, delimiter=',')

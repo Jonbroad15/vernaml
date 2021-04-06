@@ -70,7 +70,7 @@ def test(model, test_loader, device, threshold):
     for batch_idx in range(test_size):
         try:
             graph, inds, _ = next(iterator)
-        except StopIteration:
+        except:
             iterator = iter(test_loader)
             batch_idx -= 1
             continue
