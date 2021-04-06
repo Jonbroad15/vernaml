@@ -64,7 +64,7 @@ def main():
     from itertools import product
     for data in ['NR', 'NonRibo', 'all']:
 
-        args.dataset = os.path.join('balance_graphs/protein', data)
+        args.dataset = os.path.join('balance_graphs/ligand', data)
 
         if verbose: print(f"OPTIONS USED \n ",
               '-' * 10 + '\n',
