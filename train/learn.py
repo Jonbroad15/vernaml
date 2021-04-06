@@ -99,6 +99,7 @@ def test(model, test_loader, device, threshold):
 
     try:
         acc = correct/total_nodes
+        dummy_acc = target_true/total_nodes
     except(ZeroDivisionError):
         print('zero division error')
         for graph in test_loader:
@@ -108,7 +109,7 @@ def test(model, test_loader, device, threshold):
     recall = correct_true / target_true
     f1 = 2*precision*recall / (precision + recall)
 
-    return recons_loss_tot / test_size, acc, precision, recall, f1
+    return recons_loss_tot / test_size, acc, precision, recall, f1, dummy_acc
 
 
 def train_model(model, optimizer, train_loader, test_loader,
@@ -220,13 +221,13 @@ def train_model(model, optimizer, train_loader, test_loader,
             writer.add_histogram(f'{name}.grad', weight.grad, epoch)
 
         # Test phase
-        test_loss, test_acc, precision, recall, f1\
+        test_loss, test_acc, precision, recall, f1, dummy_acc\
                 = test(model, test_loader, device, threshold)
-        writer.add_scalar("Test Accuracy", test_acc, epoch)
         writer.add_scalar("Precision", precision, epoch)
         writer.add_scalar("Recall", recall, epoch)
         writer.add_scalar("F1", f1, epoch)
         writer.add_scalar("Test Accuracy", test_acc, epoch)
+        writer.add_scalar("Dummy Accuracy", dummy_acc, epoch)
         writer.add_scalar("Test loss during training", test_loss, epoch)
         print(f"Test loss: {test_loss:.4f} \t test accuracy: {test_acc:.4f}")
         #
