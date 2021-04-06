@@ -7,9 +7,6 @@ import dgl
 import numpy as np
 import torch
 
-import os
-import sys
-
 script_dir = os.path.dirname(os.path.realpath(__file__))
 if __name__ == "__main__":
     sys.path.append(os.path.join(script_dir, '..'))
